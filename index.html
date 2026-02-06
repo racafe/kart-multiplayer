@@ -1509,6 +1509,27 @@
       player2: 0x3b82f6, // blue
     };
 
+    // AI kart colors (distinct from player colors)
+    const AI_COLORS = [
+      0x22c55e, // green
+      0xf59e0b, // amber
+      0xa855f7, // purple
+      0xec4899, // pink
+    ];
+
+    const TOTAL_KARTS = 6; // max karts in race (human + AI)
+
+    // AI driving constants
+    const AI_LOOKAHEAD = 0.015;      // How far ahead on spline AI aims
+    const AI_STEER_STRENGTH = 2.5;   // How aggressively AI steers toward target
+    const AI_AVOID_RADIUS = 4.0;     // Distance at which AI starts avoiding other karts
+    const AI_AVOID_STRENGTH = 1.2;   // Steering force for avoidance
+
+    // Rubber-banding constants
+    const RUBBER_BAND_DISTANCE = 0.15;   // Spline t-distance threshold for rubber-banding
+    const RUBBER_BAND_SPEEDUP = 1.35;    // Speed multiplier when far behind leader
+    const RUBBER_BAND_SLOWDOWN = 0.72;   // Speed multiplier when far ahead of last player
+
     // ========================================
     // STATE
     // ========================================
@@ -1767,8 +1788,8 @@
     // KART OBJECT
     // ========================================
 
-    function createKart(playerSlot, startT, startLateralOffset) {
-      const color = PLAYER_COLORS[playerSlot] || 0xf59e0b;
+    function createKart(playerSlot, startT, startLateralOffset, isAI, aiColor) {
+      const color = isAI ? aiColor : (PLAYER_COLORS[playerSlot] || 0xf59e0b);
       const model = buildKartModel(color);
 
       const spline = trackData.spline;
@@ -1795,6 +1816,7 @@
       return {
         model: model,
         slot: playerSlot,
+        isAI: !!isAI,
         position: model.position.clone(),
         heading: heading,
         speed: 0,
@@ -1810,6 +1832,9 @@
         driftBoostSpeed: 0,  // Current boost speed addition
         sparkSystem: sparks,
         sparkEmitTimer: 0,   // Throttle spark emission
+        // Track progress (for AI and rubber-banding)
+        splineT: startT,     // Current approximate t on the spline
+        lapProgress: 0,       // Cumulative progress (for position ranking)
       };
     }
 
@@ -1828,7 +1853,8 @@
       // Check if on track
       kart.isOnTrack = trackData.isOnTrack(kart.position);
 
-      const maxSpd = kart.isOnTrack ? MAX_SPEED : OFFTRACK_MAX_SPEED;
+      const rubberBandFactor = applyRubberBanding(kart);
+      const maxSpd = (kart.isOnTrack ? MAX_SPEED : OFFTRACK_MAX_SPEED) * rubberBandFactor;
 
       // Apply drift boost (added to max speed temporarily)
       let effectiveMaxSpeed = maxSpd;
@@ -1989,6 +2015,151 @@
       }
 
       return spline.getPointAt(closestT).y;
+    }
+
+    // ========================================
+    // SPLINE PROGRESS TRACKING
+    // ========================================
+
+    function updateSplineT(kart) {
+      // Find closest t on spline to kart position (reuses coarse+refine pattern)
+      const spline = trackData.spline;
+      let minDist = Infinity;
+      let closestT = 0;
+      const steps = 100;
+
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const sp = spline.getPointAt(t);
+        const dx = kart.position.x - sp.x;
+        const dz = kart.position.z - sp.z;
+        const dist = dx * dx + dz * dz;
+        if (dist < minDist) {
+          minDist = dist;
+          closestT = t;
+        }
+      }
+
+      // Refine
+      const step2 = 1 / steps;
+      const tMin = Math.max(0, closestT - step2);
+      const tMax = Math.min(1, closestT + step2);
+      for (let i = 0; i <= 10; i++) {
+        const t = tMin + (tMax - tMin) * (i / 10);
+        const sp = spline.getPointAt(t);
+        const dx = kart.position.x - sp.x;
+        const dz = kart.position.z - sp.z;
+        const dist = dx * dx + dz * dz;
+        if (dist < minDist) {
+          minDist = dist;
+          closestT = t;
+        }
+      }
+
+      // Detect lap wrap (t jumps from ~1.0 to ~0.0)
+      const prevT = kart.splineT;
+      if (prevT > 0.9 && closestT < 0.1) {
+        kart.lapProgress += 1;
+      } else if (prevT < 0.1 && closestT > 0.9) {
+        kart.lapProgress -= 1;
+      }
+
+      kart.splineT = closestT;
+    }
+
+    function getTotalProgress(kart) {
+      return kart.lapProgress + kart.splineT;
+    }
+
+    // ========================================
+    // AI DRIVING LOGIC
+    // ========================================
+
+    function updateAISteering(kart, dt) {
+      if (!kart.isAI) return;
+
+      const spline = trackData.spline;
+
+      // Aim for a point ahead on the spline
+      let targetT = (kart.splineT + AI_LOOKAHEAD) % 1;
+      if (targetT < 0) targetT += 1;
+      const targetPoint = spline.getPointAt(targetT);
+
+      // Compute angle from kart to target
+      const dx = targetPoint.x - kart.position.x;
+      const dz = targetPoint.z - kart.position.z;
+      const targetAngle = Math.atan2(dx, dz);
+
+      // Difference from current heading
+      let angleDiff = targetAngle - kart.heading;
+      // Normalize to [-PI, PI]
+      while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+      while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+      // Base steering toward racing line
+      let steer = angleDiff * AI_STEER_STRENGTH;
+
+      // Collision avoidance: steer away from nearby karts
+      for (const other of karts) {
+        if (other === kart) continue;
+        const ox = other.position.x - kart.position.x;
+        const oz = other.position.z - kart.position.z;
+        const dist = Math.sqrt(ox * ox + oz * oz);
+        if (dist < AI_AVOID_RADIUS && dist > 0.1) {
+          // Determine if other kart is left or right relative to heading
+          const sideVec = new THREE.Vector3(-Math.cos(kart.heading), 0, Math.sin(kart.heading));
+          const toOther = new THREE.Vector3(ox, 0, oz).normalize();
+          const lateralDot = toOther.dot(sideVec);
+          // Steer away (opposite direction of the other kart)
+          const avoidForce = AI_AVOID_STRENGTH * (1 - dist / AI_AVOID_RADIUS);
+          steer -= lateralDot * avoidForce;
+        }
+      }
+
+      // Clamp to [-1, 1]
+      kart.steeringInput = Math.max(-1, Math.min(1, steer));
+    }
+
+    function applyRubberBanding(kart) {
+      if (!kart.isAI) return 1.0; // No rubber-banding for human players
+
+      // Find leader (max progress) and last human player (min progress among humans)
+      let leaderProgress = -Infinity;
+      let lastHumanProgress = Infinity;
+      let hasHumanPlayers = false;
+
+      for (const other of karts) {
+        const progress = getTotalProgress(other);
+        if (progress > leaderProgress) {
+          leaderProgress = progress;
+        }
+        if (!other.isAI) {
+          hasHumanPlayers = true;
+          if (progress < lastHumanProgress) {
+            lastHumanProgress = progress;
+          }
+        }
+      }
+
+      if (!hasHumanPlayers) return 1.0;
+
+      const myProgress = getTotalProgress(kart);
+
+      // Behind the leader — speed up
+      const behindLeader = leaderProgress - myProgress;
+      if (behindLeader > RUBBER_BAND_DISTANCE) {
+        const factor = Math.min(behindLeader / RUBBER_BAND_DISTANCE, 2);
+        return 1 + (RUBBER_BAND_SPEEDUP - 1) * factor;
+      }
+
+      // Ahead of last human player — slow down
+      const aheadOfLast = myProgress - lastHumanProgress;
+      if (aheadOfLast > RUBBER_BAND_DISTANCE) {
+        const factor = Math.min(aheadOfLast / RUBBER_BAND_DISTANCE, 2);
+        return 1 - (1 - RUBBER_BAND_SLOWDOWN) * factor;
+      }
+
+      return 1.0;
     }
 
     // ========================================
@@ -2227,6 +2398,8 @@
       // Fixed timestep physics
       while (accumulator >= FIXED_DT) {
         for (const kart of karts) {
+          updateAISteering(kart, FIXED_DT);
+          updateSplineT(kart);
           updateKartPhysics(kart, FIXED_DT);
         }
         resolveKartCollisions();
@@ -2252,21 +2425,43 @@
         return;
       }
 
-      // Determine which players to spawn karts for
-      const players = [];
-      if (connectedPlayers.player1) players.push('player1');
-      if (connectedPlayers.player2) players.push('player2');
+      // Determine which human players to spawn karts for
+      const humanPlayers = [];
+      if (connectedPlayers.player1) humanPlayers.push('player1');
+      if (connectedPlayers.player2) humanPlayers.push('player2');
 
-      // If only 1 player, still spawn at least one kart
-      if (players.length === 0) players.push('player1');
+      // If no players, still spawn at least one human kart
+      if (humanPlayers.length === 0) humanPlayers.push('player1');
 
-      // Place karts at the start line, side by side
-      const startT = 0.005; // Slightly past the start/finish line
-      const offsets = players.length === 1 ? [0] : [-2.5, 2.5];
+      const aiCount = TOTAL_KARTS - humanPlayers.length;
+
+      // Grid positions: 2 columns, staggered rows
+      // Row 0 (front): offsets [-2.5, 2.5], Row 1: [-2.5, 2.5] at startT - 0.008, etc.
+      const gridPositions = [];
+      const baseT = 0.005;
+      const rowSpacing = 0.008; // spline t-distance between rows
+      for (let row = 0; row < Math.ceil(TOTAL_KARTS / 2); row++) {
+        const t = (baseT - row * rowSpacing + 1) % 1; // Wrap around if needed
+        gridPositions.push({ t, offset: -2.5 });
+        gridPositions.push({ t, offset: 2.5 });
+      }
 
       karts = [];
-      for (let i = 0; i < players.length; i++) {
-        const kart = createKart(players[i], startT, offsets[i]);
+
+      // Place human players in front grid positions
+      for (let i = 0; i < humanPlayers.length; i++) {
+        const gp = gridPositions[i];
+        const kart = createKart(humanPlayers[i], gp.t, gp.offset, false, 0);
+        karts.push(kart);
+      }
+
+      // Fill remaining slots with AI karts
+      for (let i = 0; i < aiCount; i++) {
+        const gridIdx = humanPlayers.length + i;
+        const gp = gridPositions[gridIdx];
+        const aiSlot = `ai${i + 1}`;
+        const aiColor = AI_COLORS[i % AI_COLORS.length];
+        const kart = createKart(aiSlot, gp.t, gp.offset, true, aiColor);
         karts.push(kart);
       }
 
@@ -2283,7 +2478,7 @@
       accumulator = 0;
       animFrameId = requestAnimationFrame(gameLoop);
 
-      console.log(`Kart engine started with ${players.length} player(s)`);
+      console.log(`Kart engine started with ${humanPlayers.length} human(s) and ${aiCount} AI kart(s)`);
     }
 
     // ========================================
