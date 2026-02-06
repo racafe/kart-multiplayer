@@ -31,11 +31,12 @@
        CONNECTION STATUS BAR
        ======================================== */
     .status-bar {
-      padding: 12px 16px;
+      padding: 8px 16px;
       text-align: center;
-      font-size: 14px;
+      font-size: 12px;
       font-weight: 500;
       transition: background-color 0.3s, color 0.3s;
+      flex-shrink: 0;
     }
     .status-bar.connecting {
       background-color: #f59e0b;
@@ -63,12 +64,13 @@
        ======================================== */
     .player-indicator {
       text-align: center;
-      padding: 15px;
-      font-size: 18px;
+      padding: 8px;
+      font-size: 14px;
       font-weight: bold;
       letter-spacing: 2px;
       text-transform: uppercase;
       transition: color 0.3s, text-shadow 0.3s;
+      flex-shrink: 0;
     }
     .player-indicator.player1 {
       color: #ef4444;
@@ -142,186 +144,281 @@
     }
 
     /* ========================================
-       MAIN CONTROLLER AREA
+       GYRO PERMISSION OVERLAY
+       ======================================== */
+    .gyro-permission-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.95);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 200;
+      padding: 30px;
+    }
+    .gyro-permission-overlay.visible {
+      display: flex;
+    }
+    .gyro-permission-icon {
+      font-size: 64px;
+      margin-bottom: 20px;
+    }
+    .gyro-permission-title {
+      color: #f59e0b;
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      text-align: center;
+      text-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+    }
+    .gyro-permission-text {
+      color: #888;
+      font-size: 14px;
+      text-align: center;
+      margin-bottom: 30px;
+      line-height: 1.5;
+    }
+    .gyro-permission-button {
+      background: linear-gradient(145deg, #f59e0b, #d97706);
+      color: #000;
+      border: none;
+      padding: 18px 50px;
+      font-size: 18px;
+      font-weight: bold;
+      font-family: 'Courier New', monospace;
+      border-radius: 30px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    .gyro-permission-button:active {
+      transform: scale(0.95);
+    }
+
+    /* ========================================
+       MAIN CONTROLLER AREA (landscape-oriented)
        ======================================== */
     .controller-area {
       flex: 1;
       display: flex;
       flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      padding: 20px;
       position: relative;
+      overflow: hidden;
     }
 
     /* ========================================
-       VERTICAL SLIDER
+       STEERING DISPLAY
        ======================================== */
-    .slider-container {
+    .steering-display {
       display: flex;
       flex-direction: column;
       align-items: center;
+      justify-content: center;
+      padding: 8px 20px;
+      flex-shrink: 0;
+    }
+
+    .steering-wheel {
+      position: relative;
       width: 100%;
-      max-width: 200px;
-      height: 70%;
-      max-height: 500px;
-      position: relative;
+      max-width: 300px;
+      height: 40px;
     }
 
-    .slider-track {
-      width: 60px;
-      height: 100%;
-      background: linear-gradient(180deg,
-        rgba(255, 255, 255, 0.1) 0%,
-        rgba(255, 255, 255, 0.05) 50%,
-        rgba(255, 255, 255, 0.1) 100%);
-      border: 3px solid rgba(255, 255, 255, 0.2);
-      border-radius: 30px;
-      position: relative;
-      overflow: hidden;
-      transition: border-color 0.3s;
-    }
-
-    .slider-track.player1 {
-      border-color: rgba(239, 68, 68, 0.4);
-      box-shadow:
-        0 0 20px rgba(239, 68, 68, 0.2),
-        inset 0 0 20px rgba(239, 68, 68, 0.1);
-    }
-
-    .slider-track.player2 {
-      border-color: rgba(59, 130, 246, 0.4);
-      box-shadow:
-        0 0 20px rgba(59, 130, 246, 0.2),
-        inset 0 0 20px rgba(59, 130, 246, 0.1);
-    }
-
-    .slider-track.active {
-      border-color: rgba(255, 255, 255, 0.5);
-    }
-
-    .slider-track.player1.active {
-      border-color: #ef4444;
-      box-shadow:
-        0 0 30px rgba(239, 68, 68, 0.4),
-        inset 0 0 30px rgba(239, 68, 68, 0.2);
-    }
-
-    .slider-track.player2.active {
-      border-color: #3b82f6;
-      box-shadow:
-        0 0 30px rgba(59, 130, 246, 0.4),
-        inset 0 0 30px rgba(59, 130, 246, 0.2);
-    }
-
-    /* Fill indicator showing position */
-    .slider-fill {
+    .steering-track {
       position: absolute;
-      bottom: 0;
+      top: 50%;
       left: 0;
       right: 0;
-      background: linear-gradient(180deg,
-        rgba(255, 255, 255, 0.3) 0%,
-        rgba(255, 255, 255, 0.1) 100%);
-      border-radius: 0 0 27px 27px;
-      transition: height 0.05s ease-out;
+      height: 6px;
+      transform: translateY(-50%);
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      overflow: hidden;
     }
 
-    .slider-fill.player1 {
-      background: linear-gradient(180deg,
-        rgba(239, 68, 68, 0.5) 0%,
-        rgba(239, 68, 68, 0.2) 100%);
-    }
-
-    .slider-fill.player2 {
-      background: linear-gradient(180deg,
-        rgba(59, 130, 246, 0.5) 0%,
-        rgba(59, 130, 246, 0.2) 100%);
-    }
-
-    /* Slider thumb */
-    .slider-thumb {
+    .steering-center-mark {
       position: absolute;
+      top: 50%;
       left: 50%;
-      transform: translateX(-50%);
-      width: 80px;
-      height: 40px;
-      background: rgba(255, 255, 255, 0.9);
-      border-radius: 20px;
-      box-shadow:
-        0 0 15px rgba(255, 255, 255, 0.5),
-        0 0 30px rgba(255, 255, 255, 0.3);
-      transition: box-shadow 0.2s;
-      pointer-events: none;
+      width: 2px;
+      height: 20px;
+      transform: translate(-50%, -50%);
+      background: rgba(255, 255, 255, 0.3);
     }
 
-    .slider-thumb.player1 {
-      background: #ef4444;
-      box-shadow:
-        0 0 15px rgba(239, 68, 68, 0.8),
-        0 0 30px rgba(239, 68, 68, 0.5),
-        inset 0 0 10px rgba(255, 255, 255, 0.3);
-    }
-
-    .slider-thumb.player2 {
-      background: #3b82f6;
-      box-shadow:
-        0 0 15px rgba(59, 130, 246, 0.8),
-        0 0 30px rgba(59, 130, 246, 0.5),
-        inset 0 0 10px rgba(255, 255, 255, 0.3);
-    }
-
-    .slider-thumb.active {
-      transform: translateX(-50%) scale(1.1);
-      box-shadow:
-        0 0 25px rgba(255, 255, 255, 0.8),
-        0 0 50px rgba(255, 255, 255, 0.5);
-    }
-
-    .slider-thumb.player1.active {
-      box-shadow:
-        0 0 25px rgba(239, 68, 68, 1),
-        0 0 50px rgba(239, 68, 68, 0.7),
-        inset 0 0 15px rgba(255, 255, 255, 0.5);
-    }
-
-    .slider-thumb.player2.active {
-      box-shadow:
-        0 0 25px rgba(59, 130, 246, 1),
-        0 0 50px rgba(59, 130, 246, 0.7),
-        inset 0 0 15px rgba(255, 255, 255, 0.5);
-    }
-
-    /* Position value display */
-    .position-value {
+    .steering-fill-left,
+    .steering-fill-right {
       position: absolute;
-      right: -70px;
-      font-size: 24px;
+      top: 0;
+      height: 100%;
+      transition: width 0.05s linear;
+    }
+
+    .steering-fill-left {
+      right: 50%;
+      background: linear-gradient(to left, rgba(245, 158, 11, 0.8), rgba(245, 158, 11, 0.2));
+      border-radius: 3px 0 0 3px;
+    }
+
+    .steering-fill-right {
+      left: 50%;
+      background: linear-gradient(to right, rgba(245, 158, 11, 0.8), rgba(245, 158, 11, 0.2));
+      border-radius: 0 3px 3px 0;
+    }
+
+    .steering-fill-left.player1, .steering-fill-right.player1 {
+      background: linear-gradient(to left, rgba(239, 68, 68, 0.8), rgba(239, 68, 68, 0.2));
+    }
+    .steering-fill-right.player1 {
+      background: linear-gradient(to right, rgba(239, 68, 68, 0.8), rgba(239, 68, 68, 0.2));
+    }
+    .steering-fill-left.player2, .steering-fill-right.player2 {
+      background: linear-gradient(to left, rgba(59, 130, 246, 0.8), rgba(59, 130, 246, 0.2));
+    }
+    .steering-fill-right.player2 {
+      background: linear-gradient(to right, rgba(59, 130, 246, 0.8), rgba(59, 130, 246, 0.2));
+    }
+
+    .steering-indicator {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #f59e0b;
+      transform: translate(-50%, -50%);
+      transition: left 0.05s linear;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+    }
+
+    .steering-indicator.player1 {
+      background: #ef4444;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+    }
+
+    .steering-indicator.player2 {
+      background: #3b82f6;
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.6);
+    }
+
+    .steering-angle-text {
+      font-size: 16px;
       font-weight: bold;
-      color: rgba(255, 255, 255, 0.6);
-      min-width: 60px;
-      text-align: left;
-      pointer-events: none;
-      transition: color 0.3s, text-shadow 0.3s;
-    }
-
-    .position-value.player1 {
-      color: #ef4444;
-      text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
-    }
-
-    .position-value.player2 {
-      color: #3b82f6;
-      text-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
-    }
-
-    /* Instructions text */
-    .instructions {
-      color: rgba(255, 255, 255, 0.4);
-      font-size: 14px;
-      text-align: center;
-      margin-top: 30px;
+      color: rgba(255, 255, 255, 0.5);
+      margin-top: 4px;
       letter-spacing: 1px;
+    }
+
+    .steering-angle-text.player1 { color: #ef4444; }
+    .steering-angle-text.player2 { color: #3b82f6; }
+
+    /* ========================================
+       ACTION BUTTONS ROW
+       ======================================== */
+    .action-buttons {
+      flex: 1;
+      display: flex;
+      justify-content: space-between;
+      align-items: stretch;
+      padding: 10px 16px 16px;
+      gap: 16px;
+      min-height: 0;
+    }
+
+    .action-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.05);
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      cursor: pointer;
+      transition: transform 0.1s, border-color 0.2s, background 0.2s, box-shadow 0.2s;
+    }
+
+    .action-btn:active {
+      transform: scale(0.95);
+    }
+
+    .action-btn-icon {
+      font-size: 40px;
+      margin-bottom: 6px;
+      pointer-events: none;
+    }
+
+    .action-btn-label {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      pointer-events: none;
+    }
+
+    /* Drift button */
+    .drift-btn {
+      border-color: rgba(168, 85, 247, 0.4);
+      background: rgba(168, 85, 247, 0.08);
+    }
+
+    .drift-btn.active {
+      border-color: #a855f7;
+      background: rgba(168, 85, 247, 0.3);
+      box-shadow:
+        0 0 20px rgba(168, 85, 247, 0.4),
+        inset 0 0 20px rgba(168, 85, 247, 0.1);
+    }
+
+    /* Item use button */
+    .item-btn {
+      border-color: rgba(245, 158, 11, 0.4);
+      background: rgba(245, 158, 11, 0.08);
+    }
+
+    .item-btn.active {
+      border-color: #f59e0b;
+      background: rgba(245, 158, 11, 0.3);
+      box-shadow:
+        0 0 20px rgba(245, 158, 11, 0.4),
+        inset 0 0 20px rgba(245, 158, 11, 0.1);
+    }
+
+    /* ========================================
+       RECALIBRATE BUTTON
+       ======================================== */
+    .recalibrate-bar {
+      display: flex;
+      justify-content: center;
+      padding: 0 16px 10px;
+      flex-shrink: 0;
+    }
+
+    .recalibrate-btn {
+      background: none;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: rgba(255, 255, 255, 0.4);
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      padding: 6px 20px;
+      border-radius: 20px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      transition: color 0.2s, border-color 0.2s;
+    }
+
+    .recalibrate-btn:active {
+      color: #f59e0b;
+      border-color: #f59e0b;
     }
 
     /* ========================================
@@ -431,6 +528,18 @@
 
   <div class="player-indicator waiting" id="playerIndicator">Waiting for game...</div>
 
+  <!-- Gyroscope permission overlay (iOS requires user gesture) -->
+  <div class="gyro-permission-overlay" id="gyroPermissionOverlay">
+    <div class="gyro-permission-icon">&#x1F3CE;</div>
+    <div class="gyro-permission-title">Enable Steering</div>
+    <div class="gyro-permission-text">
+      This controller uses your phone's gyroscope.<br>
+      Tilt your phone left and right to steer.<br><br>
+      Tap below to enable motion controls.
+    </div>
+    <button class="gyro-permission-button" id="gyroPermissionButton">ENABLE GYROSCOPE</button>
+  </div>
+
   <!-- Room code input overlay -->
   <div class="room-input-overlay" id="roomInputOverlay">
     <div class="room-input-title">KART RACE</div>
@@ -459,15 +568,35 @@
   </div>
 
   <div class="controller-area" id="controllerArea">
-    <div class="slider-container" id="sliderContainer">
-      <div class="slider-track" id="sliderTrack">
-        <div class="slider-fill" id="sliderFill"></div>
-        <div class="slider-thumb" id="sliderThumb">
-          <span class="position-value" id="positionValue">50</span>
+    <!-- Steering angle visual feedback -->
+    <div class="steering-display">
+      <div class="steering-wheel" id="steeringWheel">
+        <div class="steering-track">
+          <div class="steering-fill-left" id="steeringFillLeft"></div>
+          <div class="steering-fill-right" id="steeringFillRight"></div>
         </div>
+        <div class="steering-center-mark"></div>
+        <div class="steering-indicator" id="steeringIndicator"></div>
       </div>
+      <div class="steering-angle-text" id="steeringAngleText">0&deg;</div>
     </div>
-    <p class="instructions">Slide to steer your kart</p>
+
+    <!-- Recalibrate button -->
+    <div class="recalibrate-bar">
+      <button class="recalibrate-btn" id="recalibrateBtn">Recalibrate</button>
+    </div>
+
+    <!-- Drift + Item buttons -->
+    <div class="action-buttons">
+      <button class="action-btn drift-btn" id="driftBtn">
+        <span class="action-btn-icon">&#x1F4A8;</span>
+        <span class="action-btn-label">Drift</span>
+      </button>
+      <button class="action-btn item-btn" id="itemBtn">
+        <span class="action-btn-icon">&#x2B50;</span>
+        <span class="action-btn-label">Item</span>
+      </button>
+    </div>
   </div>
 
   <script type="module">
@@ -477,15 +606,11 @@
     const CONTROLLER_HOSTNAME = window.location.hostname;
     const IS_SSL = window.location.protocol === 'https:';
 
-    // Treat localhost *and* raw IP addresses as "dev" hosts so that
-    // opening the controller from another device on the LAN works correctly.
     const IS_IP_HOST = /^[0-9.]+$/.test(CONTROLLER_HOSTNAME);
     const IS_DEV_HOST = CONTROLLER_HOSTNAME === 'localhost' || IS_IP_HOST;
 
-    // WebSocket URL: use same-origin reverse proxy at /ws
     const WS_URL = `${IS_SSL ? 'wss' : 'ws'}://${window.location.host}/ws`;
 
-    // Get room code from URL
     const urlParams = new URLSearchParams(window.location.search);
     let roomCode = urlParams.get('room');
 
@@ -506,23 +631,27 @@
     const reconnectButton = document.getElementById('reconnectButton');
     const reconnectAttempts = document.getElementById('reconnectAttempts');
 
-    // Slider elements
-    const sliderContainer = document.getElementById('sliderContainer');
-    const sliderTrack = document.getElementById('sliderTrack');
-    const sliderFill = document.getElementById('sliderFill');
-    const sliderThumb = document.getElementById('sliderThumb');
-    const positionValue = document.getElementById('positionValue');
+    // Gyro permission
+    const gyroPermissionOverlay = document.getElementById('gyroPermissionOverlay');
+    const gyroPermissionButton = document.getElementById('gyroPermissionButton');
+
+    // Steering display
+    const steeringIndicator = document.getElementById('steeringIndicator');
+    const steeringFillLeft = document.getElementById('steeringFillLeft');
+    const steeringFillRight = document.getElementById('steeringFillRight');
+    const steeringAngleText = document.getElementById('steeringAngleText');
+
+    // Action buttons
+    const driftBtn = document.getElementById('driftBtn');
+    const itemBtn = document.getElementById('itemBtn');
+    const recalibrateBtn = document.getElementById('recalibrateBtn');
 
     // ========================================
     // STATE
     // ========================================
     let ws = null;
     let isConnected = false;
-    let playerSlot = null;  // 'player1' or 'player2'
-
-    // Slider state
-    let currentPosition = 50;  // 0-100 (bottom to top)
-    let isDragging = false;
+    let playerSlot = null;
 
     // Reconnection state
     let reconnectAttemptCount = 0;
@@ -531,11 +660,18 @@
     const MAX_AUTO_RECONNECT_ATTEMPTS = 5;
     const RECONNECT_INTERVAL_MS = 2000;
 
-    // Throttling state for paddle_move messages (~60fps = ~16.67ms)
-    const THROTTLE_INTERVAL_MS = 16;
-    let lastSendTime = 0;
-    let pendingPosition = null;
-    let throttleTimer = null;
+    // Gyroscope state
+    let gyroEnabled = false;
+    let neutralGamma = 0; // Neutral tilt position (gamma axis = left/right)
+    const MAX_STEER_ANGLE = 45; // Degrees of tilt for full steering
+    let currentSteeringAngle = 0; // -1 to 1 normalized
+    let isDrifting = false;
+
+    // Throttle steering messages to ~30Hz
+    const STEER_THROTTLE_MS = 33;
+    let lastSteerSendTime = 0;
+    let pendingSteerValue = null;
+    let steerThrottleTimer = null;
 
     // ========================================
     // STATUS UI FUNCTIONS
@@ -553,174 +689,274 @@
       if (slot === 'player1') {
         playerIndicator.classList.add('player1');
         playerIndicator.textContent = 'Player 1 - Red Kart';
-        updateSliderColors('player1');
+        updateControllerColors('player1');
       } else if (slot === 'player2') {
         playerIndicator.classList.add('player2');
         playerIndicator.textContent = 'Player 2 - Blue Kart';
-        updateSliderColors('player2');
+        updateControllerColors('player2');
       } else {
         playerIndicator.classList.add('waiting');
         playerIndicator.textContent = 'Waiting for game...';
-        updateSliderColors(null);
+        updateControllerColors(null);
       }
     }
 
-    function updateSliderColors(slot) {
-      // Remove existing player classes
-      sliderTrack.classList.remove('player1', 'player2');
-      sliderFill.classList.remove('player1', 'player2');
-      sliderThumb.classList.remove('player1', 'player2');
-      positionValue.classList.remove('player1', 'player2');
-
-      // Add new player class if assigned
-      if (slot) {
-        sliderTrack.classList.add(slot);
-        sliderFill.classList.add(slot);
-        sliderThumb.classList.add(slot);
-        positionValue.classList.add(slot);
+    function updateControllerColors(slot) {
+      const colorElements = [steeringIndicator, steeringFillLeft, steeringFillRight, steeringAngleText];
+      for (const el of colorElements) {
+        el.classList.remove('player1', 'player2');
+        if (slot) el.classList.add(slot);
       }
     }
 
     // ========================================
-    // SLIDER FUNCTIONS
+    // GYROSCOPE FUNCTIONS
     // ========================================
 
-    function updateSliderPosition(position) {
-      currentPosition = Math.max(0, Math.min(100, position));
-
-      // Calculate thumb position (inverted: 0 = bottom, 100 = top)
-      const trackRect = sliderTrack.getBoundingClientRect();
-      const thumbHeight = 40;
-      const usableHeight = trackRect.height - thumbHeight;
-      const topOffset = (1 - currentPosition / 100) * usableHeight;
-
-      sliderThumb.style.top = `${topOffset}px`;
-      sliderFill.style.height = `${currentPosition}%`;
-      positionValue.textContent = Math.round(currentPosition);
+    function needsGyroPermission() {
+      return typeof DeviceOrientationEvent !== 'undefined' &&
+             typeof DeviceOrientationEvent.requestPermission === 'function';
     }
 
-    function handleSliderStart(clientY) {
-      isDragging = true;
-      sliderTrack.classList.add('active');
-      sliderThumb.classList.add('active');
-      updateSliderFromClient(clientY);
-    }
-
-    function handleSliderMove(clientY) {
-      if (!isDragging) return;
-      updateSliderFromClient(clientY);
-    }
-
-    function handleSliderEnd() {
-      isDragging = false;
-      sliderTrack.classList.remove('active');
-      sliderThumb.classList.remove('active');
-    }
-
-    function updateSliderFromClient(clientY) {
-      const trackRect = sliderTrack.getBoundingClientRect();
-      const thumbHeight = 40;
-      const usableTop = trackRect.top + thumbHeight / 2;
-      const usableHeight = trackRect.height - thumbHeight;
-
-      // Calculate position (0 = bottom, 100 = top)
-      const relativeY = clientY - usableTop;
-      const normalizedY = relativeY / usableHeight;
-      const position = (1 - normalizedY) * 100;
-
-      const newPosition = Math.max(0, Math.min(100, position));
-
-      // Only update and send if position changed significantly
-      if (Math.abs(newPosition - currentPosition) > 0.5) {
-        updateSliderPosition(newPosition);
-        sendPaddlePosition(newPosition);
+    async function requestGyroPermission() {
+      if (needsGyroPermission()) {
+        const permission = await DeviceOrientationEvent.requestPermission();
+        if (permission !== 'granted') {
+          return false;
+        }
       }
+      return true;
     }
 
-    function sendPaddlePosition(position) {
-      if (!ws || ws.readyState !== WebSocket.OPEN || !isConnected) {
+    function showGyroPermissionOverlay() {
+      gyroPermissionOverlay.classList.add('visible');
+    }
+
+    function hideGyroPermissionOverlay() {
+      gyroPermissionOverlay.classList.remove('visible');
+    }
+
+    async function initGyroscope() {
+      // On iOS, we need a user gesture to request permission
+      if (needsGyroPermission()) {
+        showGyroPermissionOverlay();
         return;
       }
 
-      const roundedPosition = Math.round(position);
+      // On Android/desktop, just start listening
+      startGyroListening();
+    }
+
+    function startGyroListening() {
+      gyroEnabled = true;
+
+      window.addEventListener('deviceorientation', handleDeviceOrientation);
+
+      // Calibrate neutral position after a short delay to let readings stabilize
+      setTimeout(() => {
+        calibrateNeutral();
+      }, 500);
+    }
+
+    function handleDeviceOrientation(event) {
+      if (!gyroEnabled) return;
+
+      // gamma: left-right tilt in degrees (-90 to 90)
+      const gamma = event.gamma || 0;
+
+      // Calculate steering relative to neutral position
+      const deltaGamma = gamma - neutralGamma;
+
+      // Apply non-linear sensitivity curve:
+      // Small tilts (< ~15 deg) = gentle turns, large tilts = sharp turns
+      const normalizedRaw = Math.max(-1, Math.min(1, deltaGamma / MAX_STEER_ANGLE));
+      // Apply cubic easing for sensitivity: small tilts gentle, large tilts sharp
+      const sign = normalizedRaw >= 0 ? 1 : -1;
+      const absVal = Math.abs(normalizedRaw);
+      // Blend between linear and cubic: 30% linear + 70% cubic
+      const curved = 0.3 * absVal + 0.7 * absVal * absVal * absVal;
+      currentSteeringAngle = sign * curved;
+
+      // Update visual display
+      updateSteeringDisplay(currentSteeringAngle, deltaGamma);
+
+      // Send via WebSocket (throttled)
+      sendSteeringInput(currentSteeringAngle);
+    }
+
+    function calibrateNeutral() {
+      // On next orientation event, capture current gamma as neutral
+      const onCalibrate = (event) => {
+        neutralGamma = event.gamma || 0;
+        window.removeEventListener('deviceorientation', onCalibrate);
+      };
+      window.addEventListener('deviceorientation', onCalibrate);
+    }
+
+    // ========================================
+    // STEERING DISPLAY
+    // ========================================
+
+    function updateSteeringDisplay(normalizedAngle, rawDegrees) {
+      // Move indicator: 50% = center, 0% = full left, 100% = full right
+      const percent = 50 + normalizedAngle * 50;
+      steeringIndicator.style.left = `${percent}%`;
+
+      // Fill bars
+      if (normalizedAngle < 0) {
+        steeringFillLeft.style.width = `${Math.abs(normalizedAngle) * 50}%`;
+        steeringFillRight.style.width = '0%';
+      } else {
+        steeringFillLeft.style.width = '0%';
+        steeringFillRight.style.width = `${normalizedAngle * 50}%`;
+      }
+
+      // Angle text
+      const displayDeg = Math.round(rawDegrees || 0);
+      steeringAngleText.textContent = `${displayDeg > 0 ? '+' : ''}${displayDeg}\u00B0`;
+    }
+
+    // ========================================
+    // WEBSOCKET SEND FUNCTIONS
+    // ========================================
+
+    function sendSteeringInput(angle) {
+      if (!ws || ws.readyState !== WebSocket.OPEN || !isConnected) return;
+
+      const roundedAngle = Math.round(angle * 1000) / 1000;
       const now = performance.now();
-      const timeSinceLastSend = now - lastSendTime;
+      const timeSinceLastSend = now - lastSteerSendTime;
 
-      if (timeSinceLastSend >= THROTTLE_INTERVAL_MS) {
-        // Enough time has passed, send immediately
+      if (timeSinceLastSend >= STEER_THROTTLE_MS) {
         ws.send(JSON.stringify({
-          type: 'paddle_move',
-          data: { position: roundedPosition }
+          type: 'steering_input',
+          data: { angle: roundedAngle }
         }));
-        lastSendTime = now;
-        pendingPosition = null;
+        lastSteerSendTime = now;
+        pendingSteerValue = null;
 
-        // Clear any pending throttle timer
-        if (throttleTimer) {
-          clearTimeout(throttleTimer);
-          throttleTimer = null;
+        if (steerThrottleTimer) {
+          clearTimeout(steerThrottleTimer);
+          steerThrottleTimer = null;
         }
       } else {
-        // Throttled - save position and schedule send
-        pendingPosition = roundedPosition;
+        pendingSteerValue = roundedAngle;
 
-        if (!throttleTimer) {
-          const delay = THROTTLE_INTERVAL_MS - timeSinceLastSend;
-          throttleTimer = setTimeout(() => {
-            throttleTimer = null;
-            if (pendingPosition !== null && ws && ws.readyState === WebSocket.OPEN && isConnected) {
+        if (!steerThrottleTimer) {
+          const delay = STEER_THROTTLE_MS - timeSinceLastSend;
+          steerThrottleTimer = setTimeout(() => {
+            steerThrottleTimer = null;
+            if (pendingSteerValue !== null && ws && ws.readyState === WebSocket.OPEN && isConnected) {
               ws.send(JSON.stringify({
-                type: 'paddle_move',
-                data: { position: pendingPosition }
+                type: 'steering_input',
+                data: { angle: pendingSteerValue }
               }));
-              lastSendTime = performance.now();
-              pendingPosition = null;
+              lastSteerSendTime = performance.now();
+              pendingSteerValue = null;
             }
           }, delay);
         }
       }
     }
 
+    function sendDrift(active) {
+      if (!ws || ws.readyState !== WebSocket.OPEN || !isConnected) return;
+      ws.send(JSON.stringify({
+        type: 'drift',
+        data: { active }
+      }));
+    }
+
+    function sendItemUse() {
+      if (!ws || ws.readyState !== WebSocket.OPEN || !isConnected) return;
+      ws.send(JSON.stringify({
+        type: 'item_use',
+        data: {}
+      }));
+    }
+
     // ========================================
-    // SLIDER EVENT LISTENERS
+    // ACTION BUTTON EVENT LISTENERS
     // ========================================
 
-    // Touch events
-    sliderTrack.addEventListener('touchstart', (e) => {
+    // Drift button: press/release
+    driftBtn.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      const touch = e.touches[0];
-      handleSliderStart(touch.clientY);
+      isDrifting = true;
+      driftBtn.classList.add('active');
+      sendDrift(true);
     }, { passive: false });
 
-    document.addEventListener('touchmove', (e) => {
-      if (!isDragging) return;
+    driftBtn.addEventListener('touchend', (e) => {
       e.preventDefault();
-      const touch = e.touches[0];
-      handleSliderMove(touch.clientY);
+      isDrifting = false;
+      driftBtn.classList.remove('active');
+      sendDrift(false);
     }, { passive: false });
 
-    document.addEventListener('touchend', (e) => {
-      handleSliderEnd();
-    }, { passive: false });
-
-    document.addEventListener('touchcancel', (e) => {
-      handleSliderEnd();
-    }, { passive: false });
-
-    // Mouse events (for desktop testing)
-    sliderTrack.addEventListener('mousedown', (e) => {
+    driftBtn.addEventListener('touchcancel', (e) => {
       e.preventDefault();
-      handleSliderStart(e.clientY);
+      isDrifting = false;
+      driftBtn.classList.remove('active');
+      sendDrift(false);
+    }, { passive: false });
+
+    // Mouse fallback for drift
+    driftBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      isDrifting = true;
+      driftBtn.classList.add('active');
+      sendDrift(true);
     });
 
-    document.addEventListener('mousemove', (e) => {
-      if (!isDragging) return;
-      e.preventDefault();
-      handleSliderMove(e.clientY);
+    driftBtn.addEventListener('mouseup', (e) => {
+      isDrifting = false;
+      driftBtn.classList.remove('active');
+      sendDrift(false);
     });
 
-    document.addEventListener('mouseup', (e) => {
-      handleSliderEnd();
+    driftBtn.addEventListener('mouseleave', () => {
+      if (isDrifting) {
+        isDrifting = false;
+        driftBtn.classList.remove('active');
+        sendDrift(false);
+      }
+    });
+
+    // Item button: tap
+    itemBtn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      itemBtn.classList.add('active');
+      sendItemUse();
+      setTimeout(() => itemBtn.classList.remove('active'), 150);
+    }, { passive: false });
+
+    itemBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      itemBtn.classList.add('active');
+      sendItemUse();
+      setTimeout(() => itemBtn.classList.remove('active'), 150);
+    });
+
+    // Recalibrate button
+    recalibrateBtn.addEventListener('click', () => {
+      calibrateNeutral();
+      // Brief visual feedback
+      recalibrateBtn.style.color = '#f59e0b';
+      recalibrateBtn.style.borderColor = '#f59e0b';
+      setTimeout(() => {
+        recalibrateBtn.style.color = '';
+        recalibrateBtn.style.borderColor = '';
+      }, 500);
+    });
+
+    // Gyro permission button (iOS)
+    gyroPermissionButton.addEventListener('click', async () => {
+      const granted = await requestGyroPermission();
+      hideGyroPermissionOverlay();
+      if (granted) {
+        startGyroListening();
+      }
     });
 
     // ========================================
@@ -813,13 +1049,11 @@
 
       ws.onopen = () => {
         if (isReconnect && playerSlot) {
-          // Reconnect with player slot info
           ws.send(JSON.stringify({
             type: 'reconnect',
             data: { roomCode, clientType: playerSlot }
           }));
         } else {
-          // Initial join
           ws.send(JSON.stringify({
             type: 'join_room',
             data: { roomCode }
@@ -910,9 +1144,12 @@
           isConnected = true;
           setStatus('connected', 'Connected');
           hideReconnectOverlay();
-          // Player slot is sent in the message
           if (message.data?.playerSlot) {
             setPlayerIndicator(message.data.playerSlot);
+          }
+          // Initialize gyroscope after connecting
+          if (!gyroEnabled) {
+            initGyroscope();
           }
           break;
 
@@ -920,7 +1157,6 @@
           isConnected = true;
           setStatus('connected', 'Reconnected');
           hideReconnectOverlay();
-          // Restore player slot if provided
           if (message.data?.playerSlot) {
             setPlayerIndicator(message.data.playerSlot);
           }
@@ -956,12 +1192,10 @@
           break;
 
         case 'game_over':
-          // Game ended, waiting for host to start new game
           handleGameOver(message.data?.winner);
           break;
 
         case 'new_game':
-          // Host started a new game
           handleNewGame();
           break;
       }
@@ -986,12 +1220,10 @@
 
     function handleGameOver(winner) {
       isWaitingForNewGame = true;
-      // Show waiting for new game status
       const isWinner = winner === playerSlot;
       const statusMsg = isWinner ? 'You won! Waiting for new game...' : 'Game over. Waiting for new game...';
       setStatus('connected', statusMsg);
 
-      // Update player indicator to show waiting state
       if (playerSlot === 'player1') {
         playerIndicator.textContent = isWinner ? 'Player 1 - WINNER!' : 'Player 1 - Waiting...';
       } else if (playerSlot === 'player2') {
@@ -1003,7 +1235,6 @@
       isWaitingForNewGame = false;
       setStatus('connected', 'Connected');
 
-      // Restore normal player indicator
       if (playerSlot === 'player1') {
         playerIndicator.textContent = 'Player 1 - Red Kart';
       } else if (playerSlot === 'player2') {
@@ -1015,32 +1246,24 @@
     // GLOBAL EVENT PREVENTION
     // ========================================
 
-    // Prevent default touch behaviors
     document.addEventListener('touchmove', (e) => {
-      // Allow scrolling in room input overlay
       if (roomInputOverlay.classList.contains('visible')) return;
       e.preventDefault();
     }, { passive: false });
 
-    // Prevent context menu on long press
     document.addEventListener('contextmenu', (e) => e.preventDefault());
-
-    // Prevent scrolling/zooming gestures
     document.addEventListener('gesturestart', (e) => e.preventDefault());
     document.addEventListener('gesturechange', (e) => e.preventDefault());
     document.addEventListener('gestureend', (e) => e.preventDefault());
 
-    // Tap status bar to reconnect when disconnected
     statusBar.addEventListener('click', () => {
       if (!isConnected && ws?.readyState !== WebSocket.CONNECTING) {
         connect(true);
       }
     });
 
-    // Manual reconnect button
     reconnectButton.addEventListener('click', manualReconnect);
 
-    // Room code input handlers
     roomInputText.addEventListener('input', (e) => {
       const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
       e.target.value = value;
@@ -1059,10 +1282,9 @@
     // INITIALIZATION
     // ========================================
 
-    // Set initial slider position
-    updateSliderPosition(50);
+    // Set initial steering display
+    updateSteeringDisplay(0, 0);
 
-    // Initialize - show room input if no room code in URL, otherwise connect
     if (!roomCode) {
       showRoomInput();
     } else {
