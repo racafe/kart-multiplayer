@@ -299,31 +299,18 @@
       display: none;
       width: 100%;
       height: 100%;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      position: relative;
       background: #0a0a1a;
     }
 
     .game-area.visible {
-      display: flex;
+      display: block;
     }
 
-    .game-placeholder {
-      text-align: center;
-      color: rgba(255, 255, 255, 0.5);
-    }
-
-    .game-placeholder h2 {
-      font-size: 36px;
-      color: #f59e0b;
-      text-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
-      margin-bottom: 10px;
-    }
-
-    .game-placeholder p {
-      font-size: 16px;
-      letter-spacing: 2px;
+    .game-area canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
     }
 
     /* ========================================
@@ -450,12 +437,9 @@
     <span class="controller-url" id="controllerUrl"></span>
   </div>
 
-  <!-- Game Area (hidden until race starts — placeholder for US-002/003) -->
+  <!-- Game Area (hidden until race starts) -->
   <div class="game-area" id="gameArea">
-    <div class="game-placeholder">
-      <h2>Race Starting...</h2>
-      <p>3D track loading (US-002)</p>
-    </div>
+    <!-- Three.js canvas injected here by track module -->
 
     <!-- Pause Overlay (for disconnect) -->
     <div class="pause-overlay" id="pauseOverlay">
@@ -465,6 +449,9 @@
       <button class="pause-end-button" id="pauseEndButton">End Race</button>
     </div>
   </div>
+
+  <!-- Three.js from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.min.js"></script>
 
   <!-- QR Code library from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.2.2/build/qrcode.min.js"></script>
@@ -768,6 +755,10 @@
     function showGameArea() {
       connectionScreen.style.display = 'none';
       gameArea.classList.add('visible');
+      // Initialize 3D track scene
+      if (typeof window.initTrack === 'function') {
+        window.initTrack(gameArea);
+      }
     }
 
     // ========================================
@@ -864,6 +855,605 @@
     window.kartGame = {
       handleInput: null, // Will be set by game engine (US-003)
     };
+  </script>
+
+  <!-- ========================================
+       3D RACE TRACK MODULE (US-002)
+       ======================================== -->
+  <script>
+  (function() {
+    'use strict';
+
+    const THREE = window.THREE;
+    if (!THREE) {
+      console.error('Three.js not loaded');
+      return;
+    }
+
+    // ========================================
+    // TRACK CONFIGURATION
+    // ========================================
+
+    const TRACK_HALF_WIDTH = 8;
+    const TRACK_SEGMENTS = 400; // Subdivisions along the spline
+    const BARRIER_HEIGHT = 1.5;
+    const BARRIER_THICKNESS = 0.4;
+
+    // Control points for a closed-loop circuit
+    // Designed with 4+ distinct curves and 2 elevation changes (hills)
+    const TRACK_CONTROL_POINTS = [
+      // Start/finish straight (y = ground level)
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(30, 0, 0),
+      new THREE.Vector3(55, 0, 10),
+
+      // Curve 1: sweeping right turn + uphill
+      new THREE.Vector3(70, 4, 30),
+      new THREE.Vector3(65, 8, 55),
+
+      // Hill crest 1
+      new THREE.Vector3(50, 10, 70),
+
+      // Curve 2: left hairpin + downhill
+      new THREE.Vector3(25, 6, 75),
+      new THREE.Vector3(10, 2, 60),
+
+      // Back straight with slight rise
+      new THREE.Vector3(0, 0, 40),
+      new THREE.Vector3(-15, 3, 20),
+
+      // Curve 3: chicane section
+      new THREE.Vector3(-30, 5, 10),
+      new THREE.Vector3(-40, 7, -10),
+
+      // Hill crest 2
+      new THREE.Vector3(-35, 9, -35),
+
+      // Curve 4: long sweeping turn back
+      new THREE.Vector3(-20, 5, -50),
+      new THREE.Vector3(0, 2, -45),
+      new THREE.Vector3(15, 0, -30),
+
+      // Return to start
+      new THREE.Vector3(10, 0, -15),
+    ];
+
+    let scene, camera, renderer, trackSpline, animFrameId;
+
+    // ========================================
+    // INIT
+    // ========================================
+
+    window.initTrack = function(container) {
+      if (renderer) return; // Already initialized
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x87ceeb); // Sky blue
+      scene.fog = new THREE.Fog(0x87ceeb, 150, 350);
+
+      // Camera — will be controlled by game engine (US-003)
+      camera = new THREE.PerspectiveCamera(
+        60,
+        container.clientWidth / container.clientHeight,
+        0.1,
+        500
+      );
+      // Default overview camera position
+      camera.position.set(0, 80, -80);
+      camera.lookAt(0, 0, 10);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      container.insertBefore(renderer.domElement, container.firstChild);
+
+      // Lights
+      setupLighting();
+
+      // Build track
+      trackSpline = new THREE.CatmullRomCurve3(TRACK_CONTROL_POINTS, true, 'catmullrom', 0.5);
+      buildTrackSurface();
+      buildBarriers();
+      buildStartFinishLine();
+
+      // Terrain & scenery
+      buildTerrain();
+      buildScenery();
+
+      // Expose track data for game engine (US-003)
+      window.kartGame.track = {
+        spline: trackSpline,
+        halfWidth: TRACK_HALF_WIDTH,
+        scene: scene,
+        camera: camera,
+        renderer: renderer,
+        getPointAt: (t) => trackSpline.getPointAt(t),
+        getTangentAt: (t) => trackSpline.getTangentAt(t),
+        isOnTrack: isOnTrack,
+      };
+
+      // Start render loop
+      animate();
+
+      // Handle resize
+      window.addEventListener('resize', onResize);
+    };
+
+    // ========================================
+    // LIGHTING
+    // ========================================
+
+    function setupLighting() {
+      // Ambient light
+      const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+      scene.add(ambient);
+
+      // Directional sun light
+      const sun = new THREE.DirectionalLight(0xfff4e0, 1.2);
+      sun.position.set(50, 80, 30);
+      sun.castShadow = true;
+      sun.shadow.mapSize.width = 2048;
+      sun.shadow.mapSize.height = 2048;
+      sun.shadow.camera.near = 1;
+      sun.shadow.camera.far = 250;
+      sun.shadow.camera.left = -100;
+      sun.shadow.camera.right = 100;
+      sun.shadow.camera.top = 100;
+      sun.shadow.camera.bottom = -100;
+      scene.add(sun);
+
+      // Hemisphere light for sky/ground color
+      const hemi = new THREE.HemisphereLight(0x87ceeb, 0x556b2f, 0.4);
+      scene.add(hemi);
+    }
+
+    // ========================================
+    // TRACK SURFACE
+    // ========================================
+
+    function buildTrackSurface() {
+      const points = trackSpline.getPoints(TRACK_SEGMENTS);
+      const tangents = [];
+      for (let i = 0; i <= TRACK_SEGMENTS; i++) {
+        tangents.push(trackSpline.getTangentAt(i / TRACK_SEGMENTS));
+      }
+
+      // Build geometry manually for a flat road ribbon
+      const vertices = [];
+      const uvs = [];
+      const indices = [];
+      const up = new THREE.Vector3(0, 1, 0);
+
+      for (let i = 0; i <= TRACK_SEGMENTS; i++) {
+        const p = points[i];
+        const t = tangents[i];
+        // Cross product: tangent x up = side direction
+        const side = new THREE.Vector3().crossVectors(t, up).normalize();
+
+        // Left and right edge points
+        const left = new THREE.Vector3().copy(p).addScaledVector(side, -TRACK_HALF_WIDTH);
+        const right = new THREE.Vector3().copy(p).addScaledVector(side, TRACK_HALF_WIDTH);
+
+        // Slight Y offset so road sits above terrain
+        left.y += 0.05;
+        right.y += 0.05;
+
+        vertices.push(left.x, left.y, left.z);
+        vertices.push(right.x, right.y, right.z);
+
+        const uvT = i / TRACK_SEGMENTS;
+        uvs.push(0, uvT * 20); // repeat texture along length
+        uvs.push(1, uvT * 20);
+
+        if (i < TRACK_SEGMENTS) {
+          const base = i * 2;
+          indices.push(base, base + 1, base + 2);
+          indices.push(base + 1, base + 3, base + 2);
+        }
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+
+      // Asphalt-colored road with lane markings via canvas texture
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+
+      // Dark asphalt base
+      ctx.fillStyle = '#3a3a3a';
+      ctx.fillRect(0, 0, 256, 256);
+
+      // Center dashed line (yellow)
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([20, 20]);
+      ctx.beginPath();
+      ctx.moveTo(128, 0);
+      ctx.lineTo(128, 256);
+      ctx.stroke();
+
+      // Edge lines (white)
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(15, 0);
+      ctx.lineTo(15, 256);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(241, 0);
+      ctx.lineTo(241, 256);
+      ctx.stroke();
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(1, 1);
+
+      const material = new THREE.MeshStandardMaterial({
+        map: texture,
+        roughness: 0.85,
+        metalness: 0.0,
+      });
+
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+    }
+
+    // ========================================
+    // BARRIERS (fences along track edges)
+    // ========================================
+
+    function buildBarriers() {
+      const segCount = 200; // barrier segments
+      const up = new THREE.Vector3(0, 1, 0);
+
+      // Build left and right barriers
+      for (const sideSign of [-1, 1]) {
+        const barrierVerts = [];
+        const barrierIndices = [];
+        const barrierColors = [];
+
+        for (let i = 0; i <= segCount; i++) {
+          const t = i / segCount;
+          const p = trackSpline.getPointAt(t);
+          const tang = trackSpline.getTangentAt(t);
+          const side = new THREE.Vector3().crossVectors(tang, up).normalize();
+
+          const offset = TRACK_HALF_WIDTH + BARRIER_THICKNESS * 0.5;
+          const base = new THREE.Vector3().copy(p).addScaledVector(side, sideSign * offset);
+
+          // Bottom vertex
+          barrierVerts.push(base.x, base.y, base.z);
+          // Top vertex
+          barrierVerts.push(base.x, base.y + BARRIER_HEIGHT, base.z);
+
+          // Alternating red/white colors for racing barriers
+          const isRed = Math.floor(i / 3) % 2 === 0;
+          const r = isRed ? 0.9 : 1.0;
+          const g = isRed ? 0.15 : 1.0;
+          const b = isRed ? 0.15 : 1.0;
+          barrierColors.push(r, g, b);
+          barrierColors.push(r, g, b);
+
+          if (i < segCount) {
+            const idx = i * 2;
+            barrierIndices.push(idx, idx + 1, idx + 2);
+            barrierIndices.push(idx + 1, idx + 3, idx + 2);
+          }
+        }
+
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.Float32BufferAttribute(barrierVerts, 3));
+        geom.setAttribute('color', new THREE.Float32BufferAttribute(barrierColors, 3));
+        geom.setIndex(barrierIndices);
+        geom.computeVertexNormals();
+
+        const mat = new THREE.MeshStandardMaterial({
+          vertexColors: true,
+          roughness: 0.7,
+          metalness: 0.1,
+        });
+
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+      }
+    }
+
+    // ========================================
+    // START / FINISH LINE
+    // ========================================
+
+    function buildStartFinishLine() {
+      const t = 0; // Start of spline = start/finish
+      const p = trackSpline.getPointAt(t);
+      const tang = trackSpline.getTangentAt(t);
+      const up = new THREE.Vector3(0, 1, 0);
+      const side = new THREE.Vector3().crossVectors(tang, up).normalize();
+
+      // Checkered banner across the track
+      const bannerWidth = TRACK_HALF_WIDTH * 2;
+      const bannerHeight = 4;
+      const bannerGeom = new THREE.PlaneGeometry(bannerWidth, bannerHeight, 8, 4);
+
+      // Checkered pattern
+      const bannerCanvas = document.createElement('canvas');
+      bannerCanvas.width = 128;
+      bannerCanvas.height = 64;
+      const bCtx = bannerCanvas.getContext('2d');
+      const checkSize = 16;
+      for (let y = 0; y < 64; y += checkSize) {
+        for (let x = 0; x < 128; x += checkSize) {
+          bCtx.fillStyle = ((x / checkSize + y / checkSize) % 2 === 0) ? '#000000' : '#ffffff';
+          bCtx.fillRect(x, y, checkSize, checkSize);
+        }
+      }
+
+      const bannerTex = new THREE.CanvasTexture(bannerCanvas);
+      const bannerMat = new THREE.MeshStandardMaterial({
+        map: bannerTex,
+        side: THREE.DoubleSide,
+        roughness: 0.5,
+      });
+
+      const banner = new THREE.Mesh(bannerGeom, bannerMat);
+      banner.position.copy(p);
+      banner.position.y += bannerHeight / 2 + BARRIER_HEIGHT;
+
+      // Orient banner perpendicular to track direction
+      const angle = Math.atan2(side.x, side.z);
+      banner.rotation.y = angle;
+      scene.add(banner);
+
+      // Support poles on each side
+      const poleMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.5 });
+      const poleGeom = new THREE.CylinderGeometry(0.2, 0.2, BARRIER_HEIGHT + bannerHeight, 6);
+
+      for (const s of [-1, 1]) {
+        const pole = new THREE.Mesh(poleGeom, poleMat);
+        const polePos = new THREE.Vector3().copy(p).addScaledVector(side, s * TRACK_HALF_WIDTH);
+        polePos.y += (BARRIER_HEIGHT + bannerHeight) / 2;
+        pole.position.copy(polePos);
+        pole.castShadow = true;
+        scene.add(pole);
+      }
+
+      // Ground line: white/black checkered strip on the track surface
+      const lineWidth = bannerWidth;
+      const lineDepth = 2;
+      const lineGeom = new THREE.PlaneGeometry(lineWidth, lineDepth, 8, 1);
+      const lineCanvas = document.createElement('canvas');
+      lineCanvas.width = 128;
+      lineCanvas.height = 16;
+      const lCtx = lineCanvas.getContext('2d');
+      for (let x = 0; x < 128; x += 16) {
+        lCtx.fillStyle = ((x / 16) % 2 === 0) ? '#000000' : '#ffffff';
+        lCtx.fillRect(x, 0, 16, 16);
+      }
+      const lineTex = new THREE.CanvasTexture(lineCanvas);
+      const lineMat = new THREE.MeshStandardMaterial({
+        map: lineTex,
+        side: THREE.DoubleSide,
+        roughness: 0.6,
+      });
+
+      const line = new THREE.Mesh(lineGeom, lineMat);
+      line.position.copy(p);
+      line.position.y += 0.1; // Just above road
+      line.rotation.x = -Math.PI / 2;
+      line.rotation.z = -angle;
+      scene.add(line);
+    }
+
+    // ========================================
+    // TERRAIN (ground plane)
+    // ========================================
+
+    function buildTerrain() {
+      // Large green ground plane
+      const terrainGeom = new THREE.PlaneGeometry(500, 500, 50, 50);
+      // Add subtle height variation to terrain
+      const posAttr = terrainGeom.getAttribute('position');
+      for (let i = 0; i < posAttr.count; i++) {
+        const x = posAttr.getX(i);
+        const y = posAttr.getY(i);
+        // Gentle rolling hills on terrain
+        const height = Math.sin(x * 0.03) * Math.cos(y * 0.03) * 2 - 0.5;
+        posAttr.setZ(i, height);
+      }
+      posAttr.needsUpdate = true;
+      terrainGeom.computeVertexNormals();
+
+      const terrainMat = new THREE.MeshStandardMaterial({
+        color: 0x4a7c3f, // Grass green
+        roughness: 1.0,
+        metalness: 0.0,
+        flatShading: true,
+      });
+
+      const terrain = new THREE.Mesh(terrainGeom, terrainMat);
+      terrain.rotation.x = -Math.PI / 2;
+      terrain.position.y = -0.5;
+      terrain.receiveShadow = true;
+      scene.add(terrain);
+    }
+
+    // ========================================
+    // SCENERY (low-poly trees, rocks)
+    // ========================================
+
+    function buildScenery() {
+      const rng = mulberry32(42); // Seeded random for consistent placement
+
+      // Place scenery along the track but outside barriers
+      for (let i = 0; i < 120; i++) {
+        const t = rng();
+        const p = trackSpline.getPointAt(t);
+        const tang = trackSpline.getTangentAt(t);
+        const up = new THREE.Vector3(0, 1, 0);
+        const side = new THREE.Vector3().crossVectors(tang, up).normalize();
+
+        // Place on random side, well outside the track
+        const sideSign = rng() > 0.5 ? 1 : -1;
+        const distance = TRACK_HALF_WIDTH + 5 + rng() * 25;
+
+        const pos = new THREE.Vector3().copy(p).addScaledVector(side, sideSign * distance);
+        pos.y = p.y - 0.3; // Roughly ground level
+
+        if (rng() > 0.3) {
+          createTree(pos, 2 + rng() * 3);
+        } else {
+          createRock(pos, 0.5 + rng() * 1.5);
+        }
+      }
+    }
+
+    function createTree(position, scale) {
+      const group = new THREE.Group();
+
+      // Trunk
+      const trunkGeom = new THREE.CylinderGeometry(0.15 * scale, 0.25 * scale, scale, 5);
+      const trunkMat = new THREE.MeshStandardMaterial({
+        color: 0x8B5A2B,
+        roughness: 0.9,
+        flatShading: true,
+      });
+      const trunk = new THREE.Mesh(trunkGeom, trunkMat);
+      trunk.position.y = scale * 0.5;
+      trunk.castShadow = true;
+      group.add(trunk);
+
+      // Foliage — low-poly cone shapes
+      const foliageColors = [0x2d8a4e, 0x3da55d, 0x228B22];
+      const layers = 2 + Math.floor(Math.random() * 2);
+      for (let l = 0; l < layers; l++) {
+        const radius = scale * (0.7 - l * 0.15);
+        const height = scale * 0.8;
+        const coneGeom = new THREE.ConeGeometry(radius, height, 5 + Math.floor(Math.random() * 3));
+        const coneMat = new THREE.MeshStandardMaterial({
+          color: foliageColors[l % foliageColors.length],
+          roughness: 0.8,
+          flatShading: true,
+        });
+        const cone = new THREE.Mesh(coneGeom, coneMat);
+        cone.position.y = scale + l * height * 0.5;
+        cone.castShadow = true;
+        group.add(cone);
+      }
+
+      group.position.copy(position);
+      scene.add(group);
+    }
+
+    function createRock(position, scale) {
+      // Low-poly rock using dodecahedron with displaced vertices
+      const geom = new THREE.DodecahedronGeometry(scale, 0);
+      const posAttr = geom.getAttribute('position');
+      for (let i = 0; i < posAttr.count; i++) {
+        posAttr.setX(i, posAttr.getX(i) + (Math.random() - 0.5) * scale * 0.3);
+        posAttr.setY(i, posAttr.getY(i) * 0.6 + (Math.random() - 0.5) * scale * 0.2);
+        posAttr.setZ(i, posAttr.getZ(i) + (Math.random() - 0.5) * scale * 0.3);
+      }
+      posAttr.needsUpdate = true;
+      geom.computeVertexNormals();
+
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x888888,
+        roughness: 0.95,
+        flatShading: true,
+      });
+
+      const rock = new THREE.Mesh(geom, mat);
+      rock.position.copy(position);
+      rock.position.y += scale * 0.3;
+      rock.castShadow = true;
+      rock.receiveShadow = true;
+      scene.add(rock);
+    }
+
+    // Seeded PRNG for deterministic scenery placement
+    function mulberry32(a) {
+      return function() {
+        a |= 0; a = a + 0x6D2B79F5 | 0;
+        let t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    }
+
+    // ========================================
+    // TRACK BOUNDARY CHECK
+    // ========================================
+
+    function isOnTrack(worldPos) {
+      // Find closest point on spline to the given world position
+      let minDist = Infinity;
+      let closestT = 0;
+      const steps = 200;
+
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const sp = trackSpline.getPointAt(t);
+        const dx = worldPos.x - sp.x;
+        const dz = worldPos.z - sp.z;
+        const dist = dx * dx + dz * dz;
+        if (dist < minDist) {
+          minDist = dist;
+          closestT = t;
+        }
+      }
+
+      // Refine with smaller steps around closest
+      const step2 = 1 / steps;
+      const tMin = Math.max(0, closestT - step2);
+      const tMax = Math.min(1, closestT + step2);
+      for (let i = 0; i <= 20; i++) {
+        const t = tMin + (tMax - tMin) * (i / 20);
+        const sp = trackSpline.getPointAt(t);
+        const dx = worldPos.x - sp.x;
+        const dz = worldPos.z - sp.z;
+        const dist = dx * dx + dz * dz;
+        if (dist < minDist) {
+          minDist = dist;
+          closestT = t;
+        }
+      }
+
+      const halfW = TRACK_HALF_WIDTH;
+      return Math.sqrt(minDist) <= halfW;
+    }
+
+    // ========================================
+    // RENDER LOOP
+    // ========================================
+
+    function animate() {
+      animFrameId = requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+
+    function onResize() {
+      if (!renderer || !camera) return;
+      const container = renderer.domElement.parentElement;
+      if (!container) return;
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+
+  })();
   </script>
 </body>
 </html>
