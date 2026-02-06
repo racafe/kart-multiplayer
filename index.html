@@ -389,6 +389,289 @@
     .pause-end-button:active {
       transform: scale(0.95);
     }
+
+    /* ========================================
+       COUNTDOWN OVERLAY
+       ======================================== */
+    .countdown-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 40;
+      pointer-events: none;
+    }
+
+    .countdown-overlay.visible {
+      display: flex;
+    }
+
+    .countdown-number {
+      font-size: 160px;
+      font-weight: bold;
+      color: #fff;
+      text-shadow:
+        0 0 20px #f59e0b,
+        0 0 40px #f59e0b,
+        0 0 80px #f59e0b;
+      animation: countdownPop 0.8s ease-out;
+    }
+
+    .countdown-number.go {
+      font-size: 120px;
+      color: #22c55e;
+      text-shadow:
+        0 0 20px #22c55e,
+        0 0 40px #22c55e,
+        0 0 80px #22c55e;
+    }
+
+    @keyframes countdownPop {
+      0% { transform: scale(2); opacity: 0; }
+      30% { transform: scale(1); opacity: 1; }
+      100% { transform: scale(0.8); opacity: 0; }
+    }
+
+    /* ========================================
+       RACE HUD
+       ======================================== */
+    .race-hud {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      display: none;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 16px 24px;
+      z-index: 30;
+      pointer-events: none;
+    }
+
+    .race-hud.visible {
+      display: flex;
+    }
+
+    .hud-position {
+      font-size: 48px;
+      font-weight: bold;
+      color: #fff;
+      text-shadow:
+        0 0 10px rgba(0,0,0,0.8),
+        2px 2px 4px rgba(0,0,0,0.9);
+      line-height: 1;
+    }
+
+    .hud-position-suffix {
+      font-size: 24px;
+      vertical-align: super;
+    }
+
+    .hud-lap {
+      font-size: 24px;
+      font-weight: bold;
+      color: #f59e0b;
+      text-shadow:
+        0 0 10px rgba(0,0,0,0.8),
+        2px 2px 4px rgba(0,0,0,0.9);
+      text-align: right;
+    }
+
+    .hud-lap-label {
+      font-size: 12px;
+      color: rgba(255,255,255,0.6);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      display: block;
+    }
+
+    .hud-center {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .hud-timer {
+      font-size: 20px;
+      font-weight: bold;
+      color: #fff;
+      text-shadow:
+        0 0 10px rgba(0,0,0,0.8),
+        2px 2px 4px rgba(0,0,0,0.9);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ========================================
+       POSITIONS BOARD (right side during race)
+       ======================================== */
+    .hud-positions {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      display: none;
+      flex-direction: column;
+      gap: 2px;
+      z-index: 30;
+      pointer-events: none;
+    }
+
+    .hud-positions.visible {
+      display: flex;
+    }
+
+    .hud-positions-entry {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 3px 10px;
+      border-radius: 4px;
+      background: rgba(0,0,0,0.5);
+    }
+
+    .hud-positions-entry.current-player {
+      background: rgba(245,158,11,0.3);
+      border: 1px solid rgba(245,158,11,0.5);
+    }
+
+    .hud-pos-rank {
+      font-size: 14px;
+      font-weight: bold;
+      color: #f59e0b;
+      min-width: 24px;
+    }
+
+    .hud-pos-color {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .hud-pos-name {
+      font-size: 12px;
+      color: rgba(255,255,255,0.8);
+      letter-spacing: 1px;
+    }
+
+    /* ========================================
+       RESULTS SCREEN
+       ======================================== */
+    .results-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.9);
+      z-index: 45;
+    }
+
+    .results-overlay.visible {
+      display: flex;
+    }
+
+    .results-title {
+      font-size: 48px;
+      font-weight: bold;
+      color: #f59e0b;
+      text-shadow:
+        0 0 20px rgba(245, 158, 11, 0.8),
+        0 0 40px rgba(245, 158, 11, 0.4);
+      margin-bottom: 30px;
+      letter-spacing: 8px;
+    }
+
+    .results-table {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 40px;
+      min-width: 360px;
+    }
+
+    .results-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .results-row.is-player {
+      background: rgba(245, 158, 11, 0.1);
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+
+    .results-row.first-place {
+      background: rgba(245, 158, 11, 0.15);
+      border-color: #f59e0b;
+    }
+
+    .results-rank {
+      font-size: 28px;
+      font-weight: bold;
+      color: #f59e0b;
+      min-width: 50px;
+      text-align: center;
+    }
+
+    .results-row.first-place .results-rank {
+      color: #ffd700;
+      text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+    }
+
+    .results-color {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .results-name {
+      font-size: 18px;
+      color: #fff;
+      flex: 1;
+      letter-spacing: 1px;
+    }
+
+    .results-time {
+      font-size: 16px;
+      color: rgba(255, 255, 255, 0.6);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .results-back-button {
+      background: linear-gradient(145deg, #f59e0b, #d97706);
+      color: #000;
+      border: none;
+      padding: 16px 50px;
+      font-size: 20px;
+      font-weight: bold;
+      font-family: 'Courier New', monospace;
+      border-radius: 12px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 4px;
+      transition: transform 0.1s;
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+    }
+
+    .results-back-button:hover {
+      transform: scale(1.05);
+    }
+
+    .results-back-button:active {
+      transform: scale(0.95);
+    }
   </style>
 </head>
 <body>
@@ -440,6 +723,33 @@
   <!-- Game Area (hidden until race starts) -->
   <div class="game-area" id="gameArea">
     <!-- Three.js canvas injected here by track module -->
+
+    <!-- Countdown Overlay -->
+    <div class="countdown-overlay" id="countdownOverlay">
+      <div class="countdown-number" id="countdownNumber">3</div>
+    </div>
+
+    <!-- Race HUD -->
+    <div class="race-hud" id="raceHud">
+      <div class="hud-position" id="hudPosition">1<span class="hud-position-suffix">st</span></div>
+      <div class="hud-center">
+        <div class="hud-timer" id="hudTimer">0:00.000</div>
+      </div>
+      <div class="hud-lap" id="hudLap">
+        <span class="hud-lap-label">Lap</span>
+        1 / 3
+      </div>
+    </div>
+
+    <!-- Positions Board -->
+    <div class="hud-positions" id="hudPositions"></div>
+
+    <!-- Results Screen -->
+    <div class="results-overlay" id="resultsOverlay">
+      <div class="results-title">RACE RESULTS</div>
+      <div class="results-table" id="resultsTable"></div>
+      <button class="results-back-button" id="resultsBackButton">BACK TO LOBBY</button>
+    </div>
 
     <!-- Pause Overlay (for disconnect) -->
     <div class="pause-overlay" id="pauseOverlay">
@@ -755,9 +1065,18 @@
     function showGameArea() {
       connectionScreen.style.display = 'none';
       gameArea.classList.add('visible');
-      // Initialize 3D track scene
+      // Initialize 3D track scene (first time only)
       if (typeof window.initTrack === 'function') {
         window.initTrack(gameArea);
+      }
+      // If track already initialized (re-race), start engine directly
+      if (window.kartGame?.track && typeof window.kartGame.startEngine === 'function') {
+        const p1 = player1Connected;
+        const p2 = player2Connected;
+        // Small delay to ensure DOM is ready
+        setTimeout(() => {
+          window.kartGame.startEngine({ player1: p1, player2: p2 });
+        }, 150);
       }
     }
 
@@ -854,6 +1173,12 @@
     window.updatePlayerStatus = updatePlayerStatus;
     window.kartGame = {
       handleInput: null, // Will be set by game engine (US-003)
+      returnToLobby: function() {
+        isRaceInProgress = false;
+        gameArea.classList.remove('visible');
+        connectionScreen.style.display = 'flex';
+        updateLobbyState();
+      },
     };
   </script>
 
@@ -1530,6 +1855,11 @@
     const RUBBER_BAND_SPEEDUP = 1.35;    // Speed multiplier when far behind leader
     const RUBBER_BAND_SLOWDOWN = 0.72;   // Speed multiplier when far ahead of last player
 
+    // Race flow constants
+    const TOTAL_LAPS = 3;
+    const COUNTDOWN_STEPS = [3, 2, 1, 'GO']; // Displayed sequence
+    const COUNTDOWN_STEP_DURATION = 1.0;       // Seconds per step
+
     // ========================================
     // STATE
     // ========================================
@@ -1543,6 +1873,14 @@
 
     // Track ref (set when engine starts)
     let trackData = null;
+
+    // Race state machine: 'countdown' | 'racing' | 'finished'
+    let raceState = 'countdown';
+    let countdownTimer = 0;     // Elapsed time in countdown phase
+    let countdownStep = 0;      // Current step index in COUNTDOWN_STEPS
+    let raceTimer = 0;          // Elapsed race time (starts after countdown)
+    let finishResults = [];     // Array of {slot, name, color, time, position}
+    let allHumansFinished = false;
 
     // ========================================
     // KART MODEL BUILDER
@@ -1835,6 +2173,11 @@
         // Track progress (for AI and rubber-banding)
         splineT: startT,     // Current approximate t on the spline
         lapProgress: 0,       // Cumulative progress (for position ranking)
+        // Race flow
+        currentLap: 1,        // Current lap (1-based)
+        finished: false,      // Has this kart finished the race?
+        finishTime: 0,        // Time when kart crossed finish after final lap
+        finishPosition: 0,    // Final position when finished
       };
     }
 
@@ -2060,6 +2403,24 @@
       const prevT = kart.splineT;
       if (prevT > 0.9 && closestT < 0.1) {
         kart.lapProgress += 1;
+        // Increment lap counter if racing
+        if (raceState === 'racing' && !kart.finished) {
+          kart.currentLap++;
+          if (kart.currentLap > TOTAL_LAPS) {
+            kart.finished = true;
+            kart.finishTime = raceTimer;
+            kart.finishPosition = finishResults.length + 1;
+            finishResults.push({
+              slot: kart.slot,
+              name: getKartName(kart),
+              color: getKartColorHex(kart),
+              time: raceTimer,
+              position: kart.finishPosition,
+              isAI: kart.isAI,
+            });
+            checkAllHumansFinished();
+          }
+        }
       } else if (prevT < 0.1 && closestT > 0.9) {
         kart.lapProgress -= 1;
       }
@@ -2376,6 +2737,291 @@
     }
 
     // ========================================
+    // RACE FLOW HELPERS
+    // ========================================
+
+    function getKartName(kart) {
+      if (kart.slot === 'player1') return 'Player 1';
+      if (kart.slot === 'player2') return 'Player 2';
+      // AI karts: "AI 1", "AI 2", etc.
+      return 'AI ' + kart.slot.replace('ai', '');
+    }
+
+    function getKartColorHex(kart) {
+      if (kart.slot === 'player1') return '#ef4444';
+      if (kart.slot === 'player2') return '#3b82f6';
+      const aiIndex = parseInt(kart.slot.replace('ai', ''), 10) - 1;
+      const colors = ['#22c55e', '#f59e0b', '#a855f7', '#ec4899'];
+      return colors[aiIndex % colors.length];
+    }
+
+    function getOrdinal(n) {
+      const s = ['th', 'st', 'nd', 'rd'];
+      const v = n % 100;
+      return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    }
+
+    function getOrdinalSuffix(n) {
+      const s = ['th', 'st', 'nd', 'rd'];
+      const v = n % 100;
+      return s[(v - 20) % 10] || s[v] || s[0];
+    }
+
+    function formatTime(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins}:${secs < 10 ? '0' : ''}${secs.toFixed(3)}`;
+    }
+
+    function getRacePositions() {
+      // Sort karts by progress (finished karts first by finish position, then by total progress descending)
+      const sorted = [...karts].sort((a, b) => {
+        if (a.finished && b.finished) return a.finishPosition - b.finishPosition;
+        if (a.finished) return -1;
+        if (b.finished) return 1;
+        return getTotalProgress(b) - getTotalProgress(a);
+      });
+      return sorted;
+    }
+
+    function showPlayerFinishNotice(kart) {
+      // Show position and time when local player finishes
+      const pos = getOrdinal(kart.finishPosition);
+      hudPosition.innerHTML = `${kart.finishPosition}<span class="hud-position-suffix">${getOrdinalSuffix(kart.finishPosition)}</span>`;
+      hudLap.innerHTML = `<span class="hud-lap-label">Finished</span>${formatTime(kart.finishTime)}`;
+    }
+
+    function checkAllHumansFinished() {
+      // Show notice if local player just finished
+      const playerKart = karts[localPlayerIndex];
+      if (playerKart && playerKart.finished) {
+        showPlayerFinishNotice(playerKart);
+      }
+
+      const humanKarts = karts.filter(k => !k.isAI);
+      allHumansFinished = humanKarts.every(k => k.finished);
+      if (allHumansFinished) {
+        // Auto-finish any remaining AI karts
+        for (const kart of karts) {
+          if (kart.isAI && !kart.finished) {
+            kart.finished = true;
+            kart.finishTime = raceTimer;
+            kart.finishPosition = finishResults.length + 1;
+            finishResults.push({
+              slot: kart.slot,
+              name: getKartName(kart),
+              color: getKartColorHex(kart),
+              time: raceTimer,
+              position: kart.finishPosition,
+              isAI: kart.isAI,
+            });
+          }
+        }
+        // Transition to finished state after a short delay
+        setTimeout(() => {
+          raceState = 'finished';
+          showResultsScreen();
+        }, 1500);
+      }
+    }
+
+    // ========================================
+    // COUNTDOWN
+    // ========================================
+
+    const countdownOverlay = document.getElementById('countdownOverlay');
+    const countdownNumber = document.getElementById('countdownNumber');
+
+    function updateCountdown(dt) {
+      countdownTimer += dt;
+
+      const newStep = Math.floor(countdownTimer / COUNTDOWN_STEP_DURATION);
+      if (newStep !== countdownStep && newStep < COUNTDOWN_STEPS.length) {
+        countdownStep = newStep;
+        const val = COUNTDOWN_STEPS[countdownStep];
+        countdownNumber.textContent = val;
+        countdownNumber.className = 'countdown-number' + (val === 'GO' ? ' go' : '');
+        // Re-trigger animation
+        countdownNumber.style.animation = 'none';
+        void countdownNumber.offsetHeight; // force reflow
+        countdownNumber.style.animation = '';
+      }
+
+      // Hold karts in place during countdown
+      for (const kart of karts) {
+        kart.speed = 0;
+      }
+
+      // End countdown after all steps
+      if (countdownTimer >= COUNTDOWN_STEPS.length * COUNTDOWN_STEP_DURATION) {
+        raceState = 'racing';
+        countdownOverlay.classList.remove('visible');
+        raceHud.classList.add('visible');
+        hudPositions.classList.add('visible');
+      }
+    }
+
+    function startCountdown() {
+      raceState = 'countdown';
+      countdownTimer = 0;
+      countdownStep = -1;
+      raceTimer = 0;
+      finishResults = [];
+      allHumansFinished = false;
+
+      countdownNumber.textContent = '';
+      countdownOverlay.classList.add('visible');
+      raceHud.classList.remove('visible');
+      hudPositions.classList.remove('visible');
+      resultsOverlay.classList.remove('visible');
+    }
+
+    // ========================================
+    // HUD UPDATE
+    // ========================================
+
+    const raceHud = document.getElementById('raceHud');
+    const hudPosition = document.getElementById('hudPosition');
+    const hudLap = document.getElementById('hudLap');
+    const hudTimer = document.getElementById('hudTimer');
+    const hudPositions = document.getElementById('hudPositions');
+    const resultsOverlay = document.getElementById('resultsOverlay');
+    const resultsTable = document.getElementById('resultsTable');
+    const resultsBackButton = document.getElementById('resultsBackButton');
+
+    let lastHudUpdateTime = 0;
+    const HUD_UPDATE_INTERVAL = 0.15; // seconds between full HUD refreshes
+
+    function updateHUD() {
+      if (raceState !== 'racing') return;
+
+      const playerKart = karts[localPlayerIndex];
+      if (!playerKart) return;
+
+      // Timer updates every frame (needs to look smooth)
+      hudTimer.textContent = formatTime(raceTimer);
+
+      // Throttle positions/lap/rank update for perf
+      if (raceTimer - lastHudUpdateTime < HUD_UPDATE_INTERVAL) return;
+      lastHudUpdateTime = raceTimer;
+
+      // Position
+      const positions = getRacePositions();
+      const playerPos = positions.findIndex(k => k === playerKart) + 1;
+      const suffix = getOrdinalSuffix(playerPos);
+      hudPosition.innerHTML = `${playerPos}<span class="hud-position-suffix">${suffix}</span>`;
+
+      // Lap
+      const displayLap = Math.min(playerKart.currentLap, TOTAL_LAPS);
+      hudLap.innerHTML = `<span class="hud-lap-label">Lap</span>${displayLap} / ${TOTAL_LAPS}`;
+
+      // Positions board
+      updatePositionsBoard(positions, playerKart);
+    }
+
+    function updatePositionsBoard(positions, playerKart) {
+      // Rebuild the positions board
+      hudPositions.innerHTML = '';
+      for (let i = 0; i < positions.length; i++) {
+        const kart = positions[i];
+        const entry = document.createElement('div');
+        entry.className = 'hud-positions-entry' + (kart === playerKart ? ' current-player' : '');
+
+        const rank = document.createElement('span');
+        rank.className = 'hud-pos-rank';
+        rank.textContent = getOrdinal(i + 1);
+
+        const dot = document.createElement('span');
+        dot.className = 'hud-pos-color';
+        dot.style.backgroundColor = getKartColorHex(kart);
+
+        const name = document.createElement('span');
+        name.className = 'hud-pos-name';
+        name.textContent = getKartName(kart);
+
+        entry.appendChild(rank);
+        entry.appendChild(dot);
+        entry.appendChild(name);
+        hudPositions.appendChild(entry);
+      }
+    }
+
+    // ========================================
+    // RESULTS SCREEN
+    // ========================================
+
+    function showResultsScreen() {
+      raceHud.classList.remove('visible');
+      hudPositions.classList.remove('visible');
+
+      resultsTable.innerHTML = '';
+
+      // Sort results by finish position
+      const sorted = finishResults.sort((a, b) => a.position - b.position);
+      const playerKart = karts[localPlayerIndex];
+
+      for (const result of sorted) {
+        const row = document.createElement('div');
+        row.className = 'results-row';
+        if (result.position === 1) row.classList.add('first-place');
+        if (!result.isAI && result.slot === playerKart?.slot) row.classList.add('is-player');
+
+        const rank = document.createElement('div');
+        rank.className = 'results-rank';
+        rank.textContent = getOrdinal(result.position);
+
+        const color = document.createElement('div');
+        color.className = 'results-color';
+        color.style.backgroundColor = result.color;
+
+        const name = document.createElement('div');
+        name.className = 'results-name';
+        name.textContent = result.name;
+
+        const time = document.createElement('div');
+        time.className = 'results-time';
+        time.textContent = formatTime(result.time);
+
+        row.appendChild(rank);
+        row.appendChild(color);
+        row.appendChild(name);
+        row.appendChild(time);
+        resultsTable.appendChild(row);
+      }
+
+      resultsOverlay.classList.add('visible');
+    }
+
+    function handleBackToLobby() {
+      // Clean up race state
+      engineRunning = false;
+      if (animFrameId) {
+        cancelAnimationFrame(animFrameId);
+        animFrameId = null;
+      }
+
+      // Remove kart models and spark systems from scene
+      for (const kart of karts) {
+        trackData.scene.remove(kart.model);
+        trackData.scene.remove(kart.sparkSystem.mesh);
+      }
+      karts = [];
+
+      // Hide overlays
+      resultsOverlay.classList.remove('visible');
+      raceHud.classList.remove('visible');
+      hudPositions.classList.remove('visible');
+      countdownOverlay.classList.remove('visible');
+
+      // Transition back to lobby via exposed function
+      if (typeof window.kartGame?.returnToLobby === 'function') {
+        window.kartGame.returnToLobby();
+      }
+    }
+
+    resultsBackButton.addEventListener('click', handleBackToLobby);
+
+    // ========================================
     // GAME LOOP
     // ========================================
 
@@ -2390,6 +3036,23 @@
 
       const frameDt = Math.min((timestamp - lastTime) / 1000, 0.1); // Cap at 100ms
       lastTime = timestamp;
+
+      // Countdown phase: hold karts, show countdown
+      if (raceState === 'countdown') {
+        updateCountdown(frameDt);
+        // Still update camera during countdown for nice view
+        updateCamera(frameDt);
+        return;
+      }
+
+      // Finished phase: no more physics updates
+      if (raceState === 'finished') {
+        updateCamera(frameDt);
+        return;
+      }
+
+      // Racing phase
+      raceTimer += frameDt;
       accumulator += frameDt;
 
       // Apply keyboard input each frame
@@ -2398,9 +3061,11 @@
       // Fixed timestep physics
       while (accumulator >= FIXED_DT) {
         for (const kart of karts) {
-          updateAISteering(kart, FIXED_DT);
-          updateSplineT(kart);
-          updateKartPhysics(kart, FIXED_DT);
+          if (!kart.finished) {
+            updateAISteering(kart, FIXED_DT);
+            updateSplineT(kart);
+            updateKartPhysics(kart, FIXED_DT);
+          }
         }
         resolveKartCollisions();
         resolveBarrierCollisions();
@@ -2410,6 +3075,9 @@
       // Update camera (smooth, not fixed timestep)
       updateCamera(frameDt);
 
+      // Update HUD
+      updateHUD();
+
       // Render is handled by the track module's animate loop
     }
 
@@ -2418,6 +3086,8 @@
     // ========================================
 
     function startEngine(connectedPlayers) {
+      if (engineRunning) return; // Prevent double-start
+
       // Wait for track data to be available
       trackData = window.kartGame?.track;
       if (!trackData) {
@@ -2471,6 +3141,9 @@
 
       // Wire up input handler
       window.kartGame.handleInput = handleInput;
+
+      // Start countdown
+      startCountdown();
 
       // Start game loop
       engineRunning = true;
