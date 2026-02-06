@@ -471,6 +471,11 @@
       vertical-align: super;
     }
 
+    .hud-position-total {
+      font-size: 20px;
+      color: rgba(255,255,255,0.5);
+    }
+
     .hud-lap {
       font-size: 24px;
       font-weight: bold;
@@ -554,6 +559,115 @@
       font-size: 12px;
       color: rgba(255,255,255,0.8);
       letter-spacing: 1px;
+    }
+
+    /* ========================================
+       MINIMAP
+       ======================================== */
+    .hud-minimap {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      width: 160px;
+      height: 160px;
+      z-index: 30;
+      pointer-events: none;
+      display: none;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 2px solid rgba(255,255,255,0.2);
+      background: rgba(0,0,0,0.5);
+    }
+
+    .hud-minimap.visible {
+      display: block;
+    }
+
+    .hud-minimap canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ========================================
+       SPEED INDICATOR
+       ======================================== */
+    .hud-speed {
+      position: absolute;
+      bottom: 16px;
+      right: 192px;
+      width: 48px;
+      height: 160px;
+      z-index: 30;
+      pointer-events: none;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 4px;
+    }
+
+    .hud-speed.visible {
+      display: flex;
+    }
+
+    .hud-speed-bar-bg {
+      width: 24px;
+      height: 130px;
+      background: rgba(0,0,0,0.5);
+      border-radius: 12px;
+      border: 2px solid rgba(255,255,255,0.2);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hud-speed-bar-fill {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(to top, #22c55e, #f59e0b, #ef4444);
+      border-radius: 0 0 10px 10px;
+      transition: height 0.05s linear;
+    }
+
+    .hud-speed-value {
+      font-size: 14px;
+      font-weight: bold;
+      color: #fff;
+      text-shadow: 0 0 6px rgba(0,0,0,0.8);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ========================================
+       ITEM DISPLAY
+       ======================================== */
+    .hud-item {
+      position: absolute;
+      top: 70px;
+      right: 24px;
+      width: 56px;
+      height: 56px;
+      z-index: 30;
+      pointer-events: none;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      border: 2px solid rgba(255,255,255,0.2);
+      background: rgba(0,0,0,0.5);
+    }
+
+    .hud-item.visible {
+      display: flex;
+    }
+
+    .hud-item-icon {
+      font-size: 28px;
+      opacity: 0.3;
+    }
+
+    .hud-item.has-item .hud-item-icon {
+      opacity: 1;
     }
 
     /* ========================================
@@ -743,6 +857,24 @@
 
     <!-- Positions Board -->
     <div class="hud-positions" id="hudPositions"></div>
+
+    <!-- Minimap -->
+    <div class="hud-minimap" id="hudMinimap">
+      <canvas id="minimapCanvas" width="160" height="160"></canvas>
+    </div>
+
+    <!-- Speed Indicator -->
+    <div class="hud-speed" id="hudSpeed">
+      <div class="hud-speed-bar-bg">
+        <div class="hud-speed-bar-fill" id="speedBarFill" style="height: 0%"></div>
+      </div>
+      <div class="hud-speed-value" id="speedValue">0</div>
+    </div>
+
+    <!-- Item Display -->
+    <div class="hud-item" id="hudItem">
+      <span class="hud-item-icon" id="itemIcon">?</span>
+    </div>
 
     <!-- Results Screen -->
     <div class="results-overlay" id="resultsOverlay">
@@ -2858,6 +2990,9 @@
         countdownOverlay.classList.remove('visible');
         raceHud.classList.add('visible');
         hudPositions.classList.add('visible');
+        hudMinimap.classList.add('visible');
+        hudSpeed.classList.add('visible');
+        hudItem.classList.add('visible');
       }
     }
 
@@ -2873,6 +3008,9 @@
       countdownOverlay.classList.add('visible');
       raceHud.classList.remove('visible');
       hudPositions.classList.remove('visible');
+      hudMinimap.classList.remove('visible');
+      hudSpeed.classList.remove('visible');
+      hudItem.classList.remove('visible');
       resultsOverlay.classList.remove('visible');
     }
 
@@ -2885,9 +3023,133 @@
     const hudLap = document.getElementById('hudLap');
     const hudTimer = document.getElementById('hudTimer');
     const hudPositions = document.getElementById('hudPositions');
+    const hudMinimap = document.getElementById('hudMinimap');
+    const hudSpeed = document.getElementById('hudSpeed');
+    const hudItem = document.getElementById('hudItem');
+    const minimapCanvas = document.getElementById('minimapCanvas');
+    const minimapCtx = minimapCanvas.getContext('2d');
+    const speedBarFill = document.getElementById('speedBarFill');
+    const speedValue = document.getElementById('speedValue');
+    const itemIcon = document.getElementById('itemIcon');
     const resultsOverlay = document.getElementById('resultsOverlay');
     const resultsTable = document.getElementById('resultsTable');
     const resultsBackButton = document.getElementById('resultsBackButton');
+
+    // Minimap state: pre-computed track outline points (screen coords)
+    let minimapTrackPoints = null; // Array of {x, y} in canvas coords
+    const MINIMAP_SIZE = 160;
+    const MINIMAP_PADDING = 12;
+
+    function buildMinimapTrack() {
+      if (!trackData) return;
+      const spline = trackData.spline;
+      const steps = 200;
+
+      // Sample XZ positions from the spline
+      const raw = [];
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const p = spline.getPointAt(t);
+        raw.push({ x: p.x, z: p.z });
+      }
+
+      // Find bounding box
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (const p of raw) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.z < minZ) minZ = p.z;
+        if (p.z > maxZ) maxZ = p.z;
+      }
+
+      const rangeX = maxX - minX || 1;
+      const rangeZ = maxZ - minZ || 1;
+      const usable = MINIMAP_SIZE - MINIMAP_PADDING * 2;
+      const scale = usable / Math.max(rangeX, rangeZ);
+      const offsetX = (MINIMAP_SIZE - rangeX * scale) / 2;
+      const offsetZ = (MINIMAP_SIZE - rangeZ * scale) / 2;
+
+      minimapTrackPoints = raw.map(p => ({
+        x: (p.x - minX) * scale + offsetX,
+        y: (p.z - minZ) * scale + offsetZ,
+      }));
+
+      // Store transform for kart position mapping
+      minimapTransform = { minX, minZ, scale, offsetX, offsetZ };
+    }
+
+    let minimapTransform = null;
+
+    function worldToMinimap(worldPos) {
+      if (!minimapTransform) return null;
+      const { minX, minZ, scale, offsetX, offsetZ } = minimapTransform;
+      return {
+        x: (worldPos.x - minX) * scale + offsetX,
+        y: (worldPos.z - minZ) * scale + offsetZ,
+      };
+    }
+
+    function drawMinimap() {
+      if (!minimapTrackPoints) return;
+
+      const ctx = minimapCtx;
+      ctx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+
+      // Draw track outline
+      ctx.beginPath();
+      ctx.moveTo(minimapTrackPoints[0].x, minimapTrackPoints[0].y);
+      for (let i = 1; i < minimapTrackPoints.length; i++) {
+        ctx.lineTo(minimapTrackPoints[i].x, minimapTrackPoints[i].y);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      // Draw kart dots
+      const playerKart = karts[localPlayerIndex];
+      for (const kart of karts) {
+        const mp = worldToMinimap(kart.position);
+        if (!mp) continue;
+
+        ctx.beginPath();
+        ctx.arc(mp.x, mp.y, kart === playerKart ? 5 : 3, 0, Math.PI * 2);
+        ctx.fillStyle = getKartColorHex(kart);
+        ctx.fill();
+
+        // White outline on player dot for visibility
+        if (kart === playerKart) {
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+      }
+    }
+
+    function updateSpeedIndicator() {
+      const playerKart = karts[localPlayerIndex];
+      if (!playerKart) return;
+
+      // Effective max speed includes drift boost
+      const effectiveMax = MAX_SPEED + (playerKart.driftBoostTimer > 0 ? playerKart.driftBoostSpeed : 0);
+      const pct = Math.min(100, (playerKart.speed / effectiveMax) * 100);
+      speedBarFill.style.height = pct + '%';
+      speedValue.textContent = Math.round(playerKart.speed);
+    }
+
+    function updateItemDisplay() {
+      const playerKart = karts[localPlayerIndex];
+      if (!playerKart) return;
+
+      // Item system placeholder — show current item if kart has one
+      if (playerKart.item) {
+        hudItem.classList.add('has-item');
+        itemIcon.textContent = playerKart.item;
+      } else {
+        hudItem.classList.remove('has-item');
+        itemIcon.textContent = '?';
+      }
+    }
 
     let lastHudUpdateTime = 0;
     const HUD_UPDATE_INTERVAL = 0.15; // seconds between full HUD refreshes
@@ -2901,6 +3163,12 @@
       // Timer updates every frame (needs to look smooth)
       hudTimer.textContent = formatTime(raceTimer);
 
+      // Speed indicator updates every frame for responsiveness
+      updateSpeedIndicator();
+
+      // Minimap updates every frame for smooth kart movement
+      drawMinimap();
+
       // Throttle positions/lap/rank update for perf
       if (raceTimer - lastHudUpdateTime < HUD_UPDATE_INTERVAL) return;
       lastHudUpdateTime = raceTimer;
@@ -2909,11 +3177,14 @@
       const positions = getRacePositions();
       const playerPos = positions.findIndex(k => k === playerKart) + 1;
       const suffix = getOrdinalSuffix(playerPos);
-      hudPosition.innerHTML = `${playerPos}<span class="hud-position-suffix">${suffix}</span>`;
+      hudPosition.innerHTML = `${playerPos}<span class="hud-position-suffix">${suffix}</span> <span class="hud-position-total">/ ${karts.length}</span>`;
 
       // Lap
       const displayLap = Math.min(playerKart.currentLap, TOTAL_LAPS);
       hudLap.innerHTML = `<span class="hud-lap-label">Lap</span>${displayLap} / ${TOTAL_LAPS}`;
+
+      // Item display (throttled — items don't change every frame)
+      updateItemDisplay();
 
       // Positions board
       updatePositionsBoard(positions, playerKart);
@@ -2953,6 +3224,9 @@
     function showResultsScreen() {
       raceHud.classList.remove('visible');
       hudPositions.classList.remove('visible');
+      hudMinimap.classList.remove('visible');
+      hudSpeed.classList.remove('visible');
+      hudItem.classList.remove('visible');
 
       resultsTable.innerHTML = '';
 
@@ -3011,6 +3285,9 @@
       resultsOverlay.classList.remove('visible');
       raceHud.classList.remove('visible');
       hudPositions.classList.remove('visible');
+      hudMinimap.classList.remove('visible');
+      hudSpeed.classList.remove('visible');
+      hudItem.classList.remove('visible');
       countdownOverlay.classList.remove('visible');
 
       // Transition back to lobby via exposed function
@@ -3141,6 +3418,9 @@
 
       // Wire up input handler
       window.kartGame.handleInput = handleInput;
+
+      // Build minimap track outline (once per race)
+      buildMinimapTrack();
 
       // Start countdown
       startCountdown();
