@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Kart Race Controller</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0a0a0f;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* ========================================
+       CONNECTION STATUS BAR
+       ======================================== */
+    .status-bar {
+      padding: 12px 16px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 500;
+      transition: background-color 0.3s, color 0.3s;
+    }
+    .status-bar.connecting {
+      background-color: #f59e0b;
+      color: #000;
+    }
+    .status-bar.connected {
+      background-color: #22c55e;
+      color: #fff;
+    }
+    .status-bar.disconnected {
+      background-color: #ef4444;
+      color: #fff;
+    }
+    .status-bar.error {
+      background-color: #dc2626;
+      color: #fff;
+    }
+    .status-bar.reconnecting {
+      background-color: #f59e0b;
+      color: #000;
+    }
+
+    /* ========================================
+       PLAYER INDICATOR
+       ======================================== */
+    .player-indicator {
+      text-align: center;
+      padding: 15px;
+      font-size: 18px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      transition: color 0.3s, text-shadow 0.3s;
+    }
+    .player-indicator.player1 {
+      color: #ef4444;
+      text-shadow:
+        0 0 10px rgba(239, 68, 68, 0.5),
+        0 0 20px rgba(239, 68, 68, 0.3);
+    }
+    .player-indicator.player2 {
+      color: #3b82f6;
+      text-shadow:
+        0 0 10px rgba(59, 130, 246, 0.5),
+        0 0 20px rgba(59, 130, 246, 0.3);
+    }
+    .player-indicator.waiting {
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    /* ========================================
+       RECONNECT OVERLAY
+       ======================================== */
+    .reconnect-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.9);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+    }
+    .reconnect-overlay.visible {
+      display: flex;
+    }
+    .reconnect-title {
+      color: #f59e0b;
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      text-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+    }
+    .reconnect-status {
+      color: #888;
+      font-size: 16px;
+      margin-bottom: 30px;
+    }
+    .reconnect-button {
+      background: linear-gradient(145deg, #4ade80, #22c55e);
+      color: #000;
+      border: none;
+      padding: 16px 40px;
+      font-size: 18px;
+      font-weight: bold;
+      border-radius: 30px;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .reconnect-button:active {
+      transform: scale(0.95);
+    }
+    .reconnect-button:disabled {
+      background: #666;
+      color: #999;
+    }
+    .reconnect-attempts {
+      color: #666;
+      font-size: 14px;
+      margin-top: 20px;
+    }
+
+    /* ========================================
+       MAIN CONTROLLER AREA
+       ======================================== */
+    .controller-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      position: relative;
+    }
+
+    /* ========================================
+       VERTICAL SLIDER
+       ======================================== */
+    .slider-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 200px;
+      height: 70%;
+      max-height: 500px;
+      position: relative;
+    }
+
+    .slider-track {
+      width: 60px;
+      height: 100%;
+      background: linear-gradient(180deg,
+        rgba(255, 255, 255, 0.1) 0%,
+        rgba(255, 255, 255, 0.05) 50%,
+        rgba(255, 255, 255, 0.1) 100%);
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-radius: 30px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.3s;
+    }
+
+    .slider-track.player1 {
+      border-color: rgba(239, 68, 68, 0.4);
+      box-shadow:
+        0 0 20px rgba(239, 68, 68, 0.2),
+        inset 0 0 20px rgba(239, 68, 68, 0.1);
+    }
+
+    .slider-track.player2 {
+      border-color: rgba(59, 130, 246, 0.4);
+      box-shadow:
+        0 0 20px rgba(59, 130, 246, 0.2),
+        inset 0 0 20px rgba(59, 130, 246, 0.1);
+    }
+
+    .slider-track.active {
+      border-color: rgba(255, 255, 255, 0.5);
+    }
+
+    .slider-track.player1.active {
+      border-color: #ef4444;
+      box-shadow:
+        0 0 30px rgba(239, 68, 68, 0.4),
+        inset 0 0 30px rgba(239, 68, 68, 0.2);
+    }
+
+    .slider-track.player2.active {
+      border-color: #3b82f6;
+      box-shadow:
+        0 0 30px rgba(59, 130, 246, 0.4),
+        inset 0 0 30px rgba(59, 130, 246, 0.2);
+    }
+
+    /* Fill indicator showing position */
+    .slider-fill {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(180deg,
+        rgba(255, 255, 255, 0.3) 0%,
+        rgba(255, 255, 255, 0.1) 100%);
+      border-radius: 0 0 27px 27px;
+      transition: height 0.05s ease-out;
+    }
+
+    .slider-fill.player1 {
+      background: linear-gradient(180deg,
+        rgba(239, 68, 68, 0.5) 0%,
+        rgba(239, 68, 68, 0.2) 100%);
+    }
+
+    .slider-fill.player2 {
+      background: linear-gradient(180deg,
+        rgba(59, 130, 246, 0.5) 0%,
+        rgba(59, 130, 246, 0.2) 100%);
+    }
+
+    /* Slider thumb */
+    .slider-thumb {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 80px;
+      height: 40px;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 20px;
+      box-shadow:
+        0 0 15px rgba(255, 255, 255, 0.5),
+        0 0 30px rgba(255, 255, 255, 0.3);
+      transition: box-shadow 0.2s;
+      pointer-events: none;
+    }
+
+    .slider-thumb.player1 {
+      background: #ef4444;
+      box-shadow:
+        0 0 15px rgba(239, 68, 68, 0.8),
+        0 0 30px rgba(239, 68, 68, 0.5),
+        inset 0 0 10px rgba(255, 255, 255, 0.3);
+    }
+
+    .slider-thumb.player2 {
+      background: #3b82f6;
+      box-shadow:
+        0 0 15px rgba(59, 130, 246, 0.8),
+        0 0 30px rgba(59, 130, 246, 0.5),
+        inset 0 0 10px rgba(255, 255, 255, 0.3);
+    }
+
+    .slider-thumb.active {
+      transform: translateX(-50%) scale(1.1);
+      box-shadow:
+        0 0 25px rgba(255, 255, 255, 0.8),
+        0 0 50px rgba(255, 255, 255, 0.5);
+    }
+
+    .slider-thumb.player1.active {
+      box-shadow:
+        0 0 25px rgba(239, 68, 68, 1),
+        0 0 50px rgba(239, 68, 68, 0.7),
+        inset 0 0 15px rgba(255, 255, 255, 0.5);
+    }
+
+    .slider-thumb.player2.active {
+      box-shadow:
+        0 0 25px rgba(59, 130, 246, 1),
+        0 0 50px rgba(59, 130, 246, 0.7),
+        inset 0 0 15px rgba(255, 255, 255, 0.5);
+    }
+
+    /* Position value display */
+    .position-value {
+      position: absolute;
+      right: -70px;
+      font-size: 24px;
+      font-weight: bold;
+      color: rgba(255, 255, 255, 0.6);
+      min-width: 60px;
+      text-align: left;
+      pointer-events: none;
+      transition: color 0.3s, text-shadow 0.3s;
+    }
+
+    .position-value.player1 {
+      color: #ef4444;
+      text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+    }
+
+    .position-value.player2 {
+      color: #3b82f6;
+      text-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+    }
+
+    /* Instructions text */
+    .instructions {
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 14px;
+      text-align: center;
+      margin-top: 30px;
+      letter-spacing: 1px;
+    }
+
+    /* ========================================
+       ROOM CODE INPUT OVERLAY
+       ======================================== */
+    .room-input-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.95);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 300;
+      padding: 20px;
+    }
+    .room-input-overlay.visible {
+      display: flex;
+    }
+    .room-input-title {
+      color: #f59e0b;
+      font-size: 32px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      text-align: center;
+      text-shadow:
+        0 0 10px rgba(245, 158, 11, 0.5),
+        0 0 20px rgba(245, 158, 11, 0.3);
+    }
+    .room-input-subtitle {
+      color: #888;
+      font-size: 16px;
+      margin-bottom: 40px;
+      text-align: center;
+    }
+    .room-input-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      width: 100%;
+      max-width: 300px;
+    }
+    .room-input-text {
+      width: 100%;
+      max-width: 300px;
+      height: 60px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 3px solid rgba(245, 158, 11, 0.3);
+      border-radius: 10px;
+      color: #fff;
+      font-size: 24px;
+      font-weight: bold;
+      font-family: 'Courier New', monospace;
+      text-transform: uppercase;
+      text-align: center;
+      padding: 0 20px;
+      letter-spacing: 8px;
+    }
+    .room-input-text:focus {
+      outline: none;
+      border-color: #f59e0b;
+      background: rgba(245, 158, 11, 0.1);
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+    }
+    .room-input-text::placeholder {
+      color: rgba(255, 255, 255, 0.3);
+      letter-spacing: 0;
+    }
+    .room-connect-button {
+      background: linear-gradient(145deg, #f59e0b, #d97706);
+      color: #000;
+      border: none;
+      padding: 16px 50px;
+      font-size: 18px;
+      font-weight: bold;
+      font-family: 'Courier New', monospace;
+      border-radius: 30px;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.1s;
+      margin-top: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    .room-connect-button:active {
+      transform: scale(0.95);
+    }
+    .room-connect-button:disabled {
+      background: #666;
+      color: #999;
+      cursor: not-allowed;
+    }
+    .room-input-error {
+      color: #ef4444;
+      font-size: 14px;
+      margin-top: -10px;
+      min-height: 20px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="status-bar connecting" id="statusBar">Connecting...</div>
+
+  <div class="player-indicator waiting" id="playerIndicator">Waiting for game...</div>
+
+  <!-- Room code input overlay -->
+  <div class="room-input-overlay" id="roomInputOverlay">
+    <div class="room-input-title">KART RACE</div>
+    <div class="room-input-subtitle" id="roomInputSubtitle">Enter the 4-character room code</div>
+    <div class="room-input-container">
+      <input
+        type="text"
+        class="room-input-text"
+        id="roomInputText"
+        placeholder="ABCD"
+        maxlength="4"
+        autocomplete="off"
+        autocapitalize="characters"
+      />
+      <div class="room-input-error" id="roomInputError"></div>
+      <button class="room-connect-button" id="roomConnectButton">CONNECT</button>
+    </div>
+  </div>
+
+  <!-- Reconnect overlay -->
+  <div class="reconnect-overlay" id="reconnectOverlay">
+    <div class="reconnect-title" id="reconnectTitle">Disconnected</div>
+    <div class="reconnect-status" id="reconnectStatus">Attempting to reconnect...</div>
+    <button class="reconnect-button" id="reconnectButton">Reconnect</button>
+    <div class="reconnect-attempts" id="reconnectAttempts"></div>
+  </div>
+
+  <div class="controller-area" id="controllerArea">
+    <div class="slider-container" id="sliderContainer">
+      <div class="slider-track" id="sliderTrack">
+        <div class="slider-fill" id="sliderFill"></div>
+        <div class="slider-thumb" id="sliderThumb">
+          <span class="position-value" id="positionValue">50</span>
+        </div>
+      </div>
+    </div>
+    <p class="instructions">Slide to steer your kart</p>
+  </div>
+
+  <script type="module">
+    // ========================================
+    // CONFIGURATION
+    // ========================================
+    const CONTROLLER_HOSTNAME = window.location.hostname;
+    const IS_SSL = window.location.protocol === 'https:';
+
+    // Treat localhost *and* raw IP addresses as "dev" hosts so that
+    // opening the controller from another device on the LAN works correctly.
+    const IS_IP_HOST = /^[0-9.]+$/.test(CONTROLLER_HOSTNAME);
+    const IS_DEV_HOST = CONTROLLER_HOSTNAME === 'localhost' || IS_IP_HOST;
+
+    // WebSocket URL: use same-origin reverse proxy at /ws
+    const WS_URL = `${IS_SSL ? 'wss' : 'ws'}://${window.location.host}/ws`;
+
+    // Get room code from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    let roomCode = urlParams.get('room');
+
+    // ========================================
+    // DOM ELEMENTS
+    // ========================================
+    const statusBar = document.getElementById('statusBar');
+    const playerIndicator = document.getElementById('playerIndicator');
+    const roomInputOverlay = document.getElementById('roomInputOverlay');
+    const roomInputText = document.getElementById('roomInputText');
+    const roomConnectButton = document.getElementById('roomConnectButton');
+    const roomInputError = document.getElementById('roomInputError');
+    const roomInputSubtitle = document.getElementById('roomInputSubtitle');
+    const controllerArea = document.getElementById('controllerArea');
+    const reconnectOverlay = document.getElementById('reconnectOverlay');
+    const reconnectTitle = document.getElementById('reconnectTitle');
+    const reconnectStatus = document.getElementById('reconnectStatus');
+    const reconnectButton = document.getElementById('reconnectButton');
+    const reconnectAttempts = document.getElementById('reconnectAttempts');
+
+    // Slider elements
+    const sliderContainer = document.getElementById('sliderContainer');
+    const sliderTrack = document.getElementById('sliderTrack');
+    const sliderFill = document.getElementById('sliderFill');
+    const sliderThumb = document.getElementById('sliderThumb');
+    const positionValue = document.getElementById('positionValue');
+
+    // ========================================
+    // STATE
+    // ========================================
+    let ws = null;
+    let isConnected = false;
+    let playerSlot = null;  // 'player1' or 'player2'
+
+    // Slider state
+    let currentPosition = 50;  // 0-100 (bottom to top)
+    let isDragging = false;
+
+    // Reconnection state
+    let reconnectAttemptCount = 0;
+    let reconnectTimer = null;
+    let isReconnecting = false;
+    const MAX_AUTO_RECONNECT_ATTEMPTS = 5;
+    const RECONNECT_INTERVAL_MS = 2000;
+
+    // Throttling state for paddle_move messages (~60fps = ~16.67ms)
+    const THROTTLE_INTERVAL_MS = 16;
+    let lastSendTime = 0;
+    let pendingPosition = null;
+    let throttleTimer = null;
+
+    // ========================================
+    // STATUS UI FUNCTIONS
+    // ========================================
+
+    function setStatus(status, message) {
+      statusBar.className = 'status-bar ' + status;
+      statusBar.textContent = message;
+    }
+
+    function setPlayerIndicator(slot) {
+      playerSlot = slot;
+      playerIndicator.className = 'player-indicator';
+
+      if (slot === 'player1') {
+        playerIndicator.classList.add('player1');
+        playerIndicator.textContent = 'Player 1 - Red Kart';
+        updateSliderColors('player1');
+      } else if (slot === 'player2') {
+        playerIndicator.classList.add('player2');
+        playerIndicator.textContent = 'Player 2 - Blue Kart';
+        updateSliderColors('player2');
+      } else {
+        playerIndicator.classList.add('waiting');
+        playerIndicator.textContent = 'Waiting for game...';
+        updateSliderColors(null);
+      }
+    }
+
+    function updateSliderColors(slot) {
+      // Remove existing player classes
+      sliderTrack.classList.remove('player1', 'player2');
+      sliderFill.classList.remove('player1', 'player2');
+      sliderThumb.classList.remove('player1', 'player2');
+      positionValue.classList.remove('player1', 'player2');
+
+      // Add new player class if assigned
+      if (slot) {
+        sliderTrack.classList.add(slot);
+        sliderFill.classList.add(slot);
+        sliderThumb.classList.add(slot);
+        positionValue.classList.add(slot);
+      }
+    }
+
+    // ========================================
+    // SLIDER FUNCTIONS
+    // ========================================
+
+    function updateSliderPosition(position) {
+      currentPosition = Math.max(0, Math.min(100, position));
+
+      // Calculate thumb position (inverted: 0 = bottom, 100 = top)
+      const trackRect = sliderTrack.getBoundingClientRect();
+      const thumbHeight = 40;
+      const usableHeight = trackRect.height - thumbHeight;
+      const topOffset = (1 - currentPosition / 100) * usableHeight;
+
+      sliderThumb.style.top = `${topOffset}px`;
+      sliderFill.style.height = `${currentPosition}%`;
+      positionValue.textContent = Math.round(currentPosition);
+    }
+
+    function handleSliderStart(clientY) {
+      isDragging = true;
+      sliderTrack.classList.add('active');
+      sliderThumb.classList.add('active');
+      updateSliderFromClient(clientY);
+    }
+
+    function handleSliderMove(clientY) {
+      if (!isDragging) return;
+      updateSliderFromClient(clientY);
+    }
+
+    function handleSliderEnd() {
+      isDragging = false;
+      sliderTrack.classList.remove('active');
+      sliderThumb.classList.remove('active');
+    }
+
+    function updateSliderFromClient(clientY) {
+      const trackRect = sliderTrack.getBoundingClientRect();
+      const thumbHeight = 40;
+      const usableTop = trackRect.top + thumbHeight / 2;
+      const usableHeight = trackRect.height - thumbHeight;
+
+      // Calculate position (0 = bottom, 100 = top)
+      const relativeY = clientY - usableTop;
+      const normalizedY = relativeY / usableHeight;
+      const position = (1 - normalizedY) * 100;
+
+      const newPosition = Math.max(0, Math.min(100, position));
+
+      // Only update and send if position changed significantly
+      if (Math.abs(newPosition - currentPosition) > 0.5) {
+        updateSliderPosition(newPosition);
+        sendPaddlePosition(newPosition);
+      }
+    }
+
+    function sendPaddlePosition(position) {
+      if (!ws || ws.readyState !== WebSocket.OPEN || !isConnected) {
+        return;
+      }
+
+      const roundedPosition = Math.round(position);
+      const now = performance.now();
+      const timeSinceLastSend = now - lastSendTime;
+
+      if (timeSinceLastSend >= THROTTLE_INTERVAL_MS) {
+        // Enough time has passed, send immediately
+        ws.send(JSON.stringify({
+          type: 'paddle_move',
+          data: { position: roundedPosition }
+        }));
+        lastSendTime = now;
+        pendingPosition = null;
+
+        // Clear any pending throttle timer
+        if (throttleTimer) {
+          clearTimeout(throttleTimer);
+          throttleTimer = null;
+        }
+      } else {
+        // Throttled - save position and schedule send
+        pendingPosition = roundedPosition;
+
+        if (!throttleTimer) {
+          const delay = THROTTLE_INTERVAL_MS - timeSinceLastSend;
+          throttleTimer = setTimeout(() => {
+            throttleTimer = null;
+            if (pendingPosition !== null && ws && ws.readyState === WebSocket.OPEN && isConnected) {
+              ws.send(JSON.stringify({
+                type: 'paddle_move',
+                data: { position: pendingPosition }
+              }));
+              lastSendTime = performance.now();
+              pendingPosition = null;
+            }
+          }, delay);
+        }
+      }
+    }
+
+    // ========================================
+    // SLIDER EVENT LISTENERS
+    // ========================================
+
+    // Touch events
+    sliderTrack.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      handleSliderStart(touch.clientY);
+    }, { passive: false });
+
+    document.addEventListener('touchmove', (e) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      handleSliderMove(touch.clientY);
+    }, { passive: false });
+
+    document.addEventListener('touchend', (e) => {
+      handleSliderEnd();
+    }, { passive: false });
+
+    document.addEventListener('touchcancel', (e) => {
+      handleSliderEnd();
+    }, { passive: false });
+
+    // Mouse events (for desktop testing)
+    sliderTrack.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      handleSliderStart(e.clientY);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      handleSliderMove(e.clientY);
+    });
+
+    document.addEventListener('mouseup', (e) => {
+      handleSliderEnd();
+    });
+
+    // ========================================
+    // RECONNECT OVERLAY FUNCTIONS
+    // ========================================
+
+    function showReconnectOverlay(title, status, showButton = false) {
+      reconnectTitle.textContent = title;
+      reconnectStatus.textContent = status;
+      reconnectButton.style.display = showButton ? 'block' : 'none';
+      reconnectOverlay.classList.add('visible');
+    }
+
+    function hideReconnectOverlay() {
+      reconnectOverlay.classList.remove('visible');
+      reconnectAttemptCount = 0;
+      isReconnecting = false;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    }
+
+    function updateReconnectAttemptsDisplay() {
+      if (reconnectAttemptCount > 0) {
+        reconnectAttempts.textContent = `Attempt ${reconnectAttemptCount} of ${MAX_AUTO_RECONNECT_ATTEMPTS}`;
+      } else {
+        reconnectAttempts.textContent = '';
+      }
+    }
+
+    // ========================================
+    // ROOM INPUT FUNCTIONS
+    // ========================================
+
+    function showRoomInput(subtitle = 'Enter the 4-character room code') {
+      roomInputSubtitle.textContent = subtitle;
+      roomInputText.value = '';
+      roomInputError.textContent = '';
+      roomInputOverlay.classList.add('visible');
+      controllerArea.style.display = 'none';
+      setStatus('disconnected', 'Enter room code');
+      setPlayerIndicator(null);
+      setTimeout(() => {
+        roomInputText.focus();
+      }, 100);
+    }
+
+    function hideRoomInput() {
+      roomInputOverlay.classList.remove('visible');
+      controllerArea.style.display = 'flex';
+    }
+
+    function handleRoomCodeSubmit() {
+      const inputValue = roomInputText.value.trim().toUpperCase();
+
+      if (!inputValue || inputValue.length !== 4) {
+        roomInputError.textContent = 'Please enter a 4-character room code';
+        return;
+      }
+
+      if (!/^[A-Z0-9]{4}$/.test(inputValue)) {
+        roomInputError.textContent = 'Room code must be letters and numbers only';
+        return;
+      }
+
+      roomCode = inputValue;
+      roomInputError.textContent = '';
+      hideRoomInput();
+      connect();
+    }
+
+    // ========================================
+    // WEBSOCKET CONNECTION
+    // ========================================
+
+    function connect(isReconnect = false) {
+      if (!roomCode) {
+        showRoomInput();
+        return;
+      }
+
+      if (isReconnect) {
+        setStatus('reconnecting', 'Reconnecting...');
+      } else {
+        setStatus('connecting', 'Connecting...');
+      }
+
+      ws = new WebSocket(WS_URL);
+
+      ws.onopen = () => {
+        if (isReconnect && playerSlot) {
+          // Reconnect with player slot info
+          ws.send(JSON.stringify({
+            type: 'reconnect',
+            data: { roomCode, clientType: playerSlot }
+          }));
+        } else {
+          // Initial join
+          ws.send(JSON.stringify({
+            type: 'join_room',
+            data: { roomCode }
+          }));
+        }
+      };
+
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        handleMessage(message);
+      };
+
+      ws.onerror = () => {
+        setStatus('error', 'Connection error');
+        isConnected = false;
+        handleConnectionLost();
+      };
+
+      ws.onclose = () => {
+        if (isConnected) {
+          isConnected = false;
+          handleConnectionLost();
+        }
+      };
+    }
+
+    // ========================================
+    // CONNECTION LOSS HANDLING
+    // ========================================
+
+    function handleConnectionLost() {
+      if (isReconnecting) return;
+
+      isReconnecting = true;
+      reconnectAttemptCount = 0;
+      showReconnectOverlay('Disconnected', 'Attempting to reconnect...');
+      startAutoReconnect();
+    }
+
+    function startAutoReconnect() {
+      if (reconnectAttemptCount >= MAX_AUTO_RECONNECT_ATTEMPTS) {
+        setStatus('disconnected', 'Auto-reconnect failed');
+        showReconnectOverlay(
+          'Connection Lost',
+          'Auto-reconnect timed out',
+          true
+        );
+        reconnectAttempts.textContent = '';
+        return;
+      }
+
+      reconnectAttemptCount++;
+      updateReconnectAttemptsDisplay();
+      reconnectStatus.textContent = 'Attempting to reconnect...';
+
+      reconnectTimer = setTimeout(() => {
+        if (!isConnected) {
+          connect(true);
+
+          reconnectTimer = setTimeout(() => {
+            if (!isConnected && isReconnecting) {
+              startAutoReconnect();
+            }
+          }, RECONNECT_INTERVAL_MS);
+        }
+      }, reconnectAttemptCount === 1 ? 0 : RECONNECT_INTERVAL_MS);
+    }
+
+    function manualReconnect() {
+      reconnectButton.disabled = true;
+      reconnectStatus.textContent = 'Connecting...';
+      reconnectAttemptCount = 0;
+
+      connect(true);
+
+      setTimeout(() => {
+        reconnectButton.disabled = false;
+      }, 2000);
+    }
+
+    // ========================================
+    // MESSAGE HANDLING
+    // ========================================
+
+    function handleMessage(message) {
+      switch (message.type) {
+        case 'room_joined':
+          isConnected = true;
+          setStatus('connected', 'Connected');
+          hideReconnectOverlay();
+          // Player slot is sent in the message
+          if (message.data?.playerSlot) {
+            setPlayerIndicator(message.data.playerSlot);
+          }
+          break;
+
+        case 'reconnected':
+          isConnected = true;
+          setStatus('connected', 'Reconnected');
+          hideReconnectOverlay();
+          // Restore player slot if provided
+          if (message.data?.playerSlot) {
+            setPlayerIndicator(message.data.playerSlot);
+          }
+          break;
+
+        case 'error':
+          setStatus('error', message.data?.message || 'Error');
+          const errorMsg = message.data?.message || '';
+          if (errorMsg.includes('Room') && (errorMsg.includes('not found') || errorMsg.includes('expired'))) {
+            isReconnecting = false;
+            if (ws) {
+              ws.close();
+              ws = null;
+            }
+            isConnected = false;
+            roomCode = null;
+            playerSlot = null;
+            hideReconnectOverlay();
+            showRoomInput('Room not found or expired. Enter a new room code');
+          }
+          break;
+
+        case 'peer_disconnected':
+          setStatus('disconnected', 'Opponent disconnected');
+          break;
+
+        case 'peer_reconnected':
+          setStatus('connected', 'Connected');
+          break;
+
+        case 'room_closed':
+          handleRoomClosed();
+          break;
+
+        case 'game_over':
+          // Game ended, waiting for host to start new game
+          handleGameOver(message.data?.winner);
+          break;
+
+        case 'new_game':
+          // Host started a new game
+          handleNewGame();
+          break;
+      }
+    }
+
+    function handleRoomClosed() {
+      if (ws) {
+        ws.close();
+        ws = null;
+      }
+      isConnected = false;
+      roomCode = null;
+      playerSlot = null;
+      showRoomInput('Race ended. Enter a new room code to race again');
+    }
+
+    // ========================================
+    // GAME OVER / NEW GAME HANDLING
+    // ========================================
+
+    let isWaitingForNewGame = false;
+
+    function handleGameOver(winner) {
+      isWaitingForNewGame = true;
+      // Show waiting for new game status
+      const isWinner = winner === playerSlot;
+      const statusMsg = isWinner ? 'You won! Waiting for new game...' : 'Game over. Waiting for new game...';
+      setStatus('connected', statusMsg);
+
+      // Update player indicator to show waiting state
+      if (playerSlot === 'player1') {
+        playerIndicator.textContent = isWinner ? 'Player 1 - WINNER!' : 'Player 1 - Waiting...';
+      } else if (playerSlot === 'player2') {
+        playerIndicator.textContent = isWinner ? 'Player 2 - WINNER!' : 'Player 2 - Waiting...';
+      }
+    }
+
+    function handleNewGame() {
+      isWaitingForNewGame = false;
+      setStatus('connected', 'Connected');
+
+      // Restore normal player indicator
+      if (playerSlot === 'player1') {
+        playerIndicator.textContent = 'Player 1 - Red Kart';
+      } else if (playerSlot === 'player2') {
+        playerIndicator.textContent = 'Player 2 - Blue Kart';
+      }
+    }
+
+    // ========================================
+    // GLOBAL EVENT PREVENTION
+    // ========================================
+
+    // Prevent default touch behaviors
+    document.addEventListener('touchmove', (e) => {
+      // Allow scrolling in room input overlay
+      if (roomInputOverlay.classList.contains('visible')) return;
+      e.preventDefault();
+    }, { passive: false });
+
+    // Prevent context menu on long press
+    document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // Prevent scrolling/zooming gestures
+    document.addEventListener('gesturestart', (e) => e.preventDefault());
+    document.addEventListener('gesturechange', (e) => e.preventDefault());
+    document.addEventListener('gestureend', (e) => e.preventDefault());
+
+    // Tap status bar to reconnect when disconnected
+    statusBar.addEventListener('click', () => {
+      if (!isConnected && ws?.readyState !== WebSocket.CONNECTING) {
+        connect(true);
+      }
+    });
+
+    // Manual reconnect button
+    reconnectButton.addEventListener('click', manualReconnect);
+
+    // Room code input handlers
+    roomInputText.addEventListener('input', (e) => {
+      const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      e.target.value = value;
+      roomInputError.textContent = '';
+    });
+
+    roomInputText.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        handleRoomCodeSubmit();
+      }
+    });
+
+    roomConnectButton.addEventListener('click', handleRoomCodeSubmit);
+
+    // ========================================
+    // INITIALIZATION
+    // ========================================
+
+    // Set initial slider position
+    updateSliderPosition(50);
+
+    // Initialize - show room input if no room code in URL, otherwise connect
+    if (!roomCode) {
+      showRoomInput();
+    } else {
+      connect();
+    }
+  </script>
+</body>
+</html>
