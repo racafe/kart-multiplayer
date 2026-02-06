@@ -1419,6 +1419,9 @@
       buildTerrain();
       buildScenery();
 
+      // Boost pads
+      const boostPadData = buildBoostPads();
+
       // Expose track data for game engine (US-003)
       window.kartGame.track = {
         spline: trackSpline,
@@ -1429,6 +1432,7 @@
         getPointAt: (t) => trackSpline.getPointAt(t),
         getTangentAt: (t) => trackSpline.getTangentAt(t),
         isOnTrack: isOnTrack,
+        boostPads: boostPadData,
       };
 
       // Start render loop
@@ -1849,6 +1853,101 @@
     }
 
     // ========================================
+    // BOOST PADS
+    // ========================================
+
+    // Boost pad positions as spline t-values (0–1 around track)
+    const BOOST_PAD_POSITIONS = [0.15, 0.45, 0.75];
+    const BOOST_PAD_LENGTH = 6;   // Length along track direction
+    const BOOST_PAD_WIDTH = 5;    // Width across track
+    let boostPadMeshes = [];      // Three.js meshes for cleanup
+
+    function buildBoostPads() {
+      boostPadMeshes = [];
+      const boostPadData = [];
+
+      for (const t of BOOST_PAD_POSITIONS) {
+        const center = trackSpline.getPointAt(t);
+        const tangent = trackSpline.getTangentAt(t).normalize();
+        const up = new THREE.Vector3(0, 1, 0);
+        const side = new THREE.Vector3().crossVectors(tangent, up).normalize();
+
+        // Build boost pad as a flat plane on the track surface
+        const padGroup = new THREE.Group();
+
+        // Base glow panel
+        const padGeom = new THREE.PlaneGeometry(BOOST_PAD_WIDTH, BOOST_PAD_LENGTH);
+        const padCanvas = document.createElement('canvas');
+        padCanvas.width = 128;
+        padCanvas.height = 256;
+        const ctx = padCanvas.getContext('2d');
+
+        // Gradient background: cyan/teal
+        const grad = ctx.createLinearGradient(0, 256, 0, 0);
+        grad.addColorStop(0, '#00ffcc');
+        grad.addColorStop(0.5, '#00ccff');
+        grad.addColorStop(1, '#00ffcc');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 128, 256);
+
+        // Draw arrow chevrons
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 6;
+        ctx.lineCap = 'round';
+        for (let a = 0; a < 3; a++) {
+          const cy = 50 + a * 75;
+          ctx.beginPath();
+          ctx.moveTo(20, cy + 25);
+          ctx.lineTo(64, cy - 10);
+          ctx.lineTo(108, cy + 25);
+          ctx.stroke();
+        }
+
+        // Dark border
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(2, 2, 124, 252);
+
+        const padTexture = new THREE.CanvasTexture(padCanvas);
+        const padMat = new THREE.MeshStandardMaterial({
+          map: padTexture,
+          emissive: 0x00ccff,
+          emissiveIntensity: 0.6,
+          transparent: true,
+          opacity: 0.85,
+          side: THREE.DoubleSide,
+        });
+
+        const padMesh = new THREE.Mesh(padGeom, padMat);
+        padGroup.add(padMesh);
+
+        // Position the group on the track
+        padGroup.position.copy(center);
+        padGroup.position.y += 0.08; // Slightly above road to avoid z-fighting
+
+        // Orient: look along tangent, lying flat on road
+        // PlaneGeometry faces +Z by default; we rotate to lie flat and point along tangent
+        padGroup.lookAt(center.clone().add(tangent));
+        padGroup.rotateX(-Math.PI / 2);
+
+        scene.add(padGroup);
+        boostPadMeshes.push(padGroup);
+
+        // Store data for collision detection in engine
+        boostPadData.push({
+          t: t,
+          center: center.clone(),
+          tangent: tangent.clone(),
+          side: side.clone(),
+          halfLength: BOOST_PAD_LENGTH / 2,
+          halfWidth: BOOST_PAD_WIDTH / 2,
+        });
+      }
+
+      return boostPadData;
+    }
+
+    // ========================================
     // TRACK BOUNDARY CHECK
     // ========================================
 
@@ -1991,6 +2090,12 @@
     const TOTAL_LAPS = 3;
     const COUNTDOWN_STEPS = [3, 2, 1, 'GO']; // Displayed sequence
     const COUNTDOWN_STEP_DURATION = 1.0;       // Seconds per step
+
+    // Boost pad constants
+    const BOOST_PAD_SPEED = 15;          // Speed boost from pad
+    const BOOST_PAD_DURATION = 0.6;      // Duration of boost effect (seconds)
+    const BOOST_PAD_COOLDOWN = 1.5;      // Per-kart cooldown per pad (seconds)
+    const BOOST_PAD_TRIGGER_DIST = 4.0;  // Distance threshold to trigger pad
 
     // ========================================
     // STATE
@@ -2310,6 +2415,10 @@
         finished: false,      // Has this kart finished the race?
         finishTime: 0,        // Time when kart crossed finish after final lap
         finishPosition: 0,    // Final position when finished
+        // Boost pad state
+        boostPadCooldowns: {},   // Per-pad cooldown timers { padIndex: remainingSeconds }
+        padBoostTimer: 0,        // Remaining boost time from pad
+        padBoostSpeed: 0,        // Current pad boost speed addition
       };
     }
 
@@ -2342,9 +2451,15 @@
         }
       }
 
+      // Apply boost pad speed bonus (stacks with drift boost)
+      if (kart.padBoostTimer > 0) {
+        effectiveMaxSpeed += kart.padBoostSpeed;
+      }
+
       // Auto-accelerate
       if (kart.speed < effectiveMaxSpeed) {
-        const accel = kart.driftBoostTimer > 0 ? ACCELERATION * 2.5 : ACCELERATION;
+        const isBoosted = kart.driftBoostTimer > 0 || kart.padBoostTimer > 0;
+        const accel = isBoosted ? ACCELERATION * 2.5 : ACCELERATION;
         kart.speed += accel * dt;
         if (kart.speed > effectiveMaxSpeed) kart.speed = effectiveMaxSpeed;
       }
@@ -2355,8 +2470,8 @@
         if (kart.speed < OFFTRACK_MAX_SPEED) kart.speed = OFFTRACK_MAX_SPEED;
       }
 
-      // Natural deceleration (gentle) — reduced during boost
-      if (kart.speed > 0 && kart.driftBoostTimer <= 0) {
+      // Natural deceleration (gentle) — suppressed during any boost
+      if (kart.speed > 0 && kart.driftBoostTimer <= 0 && kart.padBoostTimer <= 0) {
         kart.speed -= NATURAL_DECEL * dt;
         if (kart.speed < 0) kart.speed = 0;
       }
@@ -2765,6 +2880,54 @@
     }
 
     // ========================================
+    // BOOST PAD CHECK
+    // ========================================
+
+    function checkBoostPads(dt) {
+      const pads = trackData.boostPads;
+      if (!pads || pads.length === 0) return;
+
+      for (const kart of karts) {
+        if (kart.finished) continue;
+
+        // Tick down pad cooldowns
+        for (const idx in kart.boostPadCooldowns) {
+          kart.boostPadCooldowns[idx] -= dt;
+          if (kart.boostPadCooldowns[idx] <= 0) {
+            delete kart.boostPadCooldowns[idx];
+          }
+        }
+
+        // Tick down pad boost timer
+        if (kart.padBoostTimer > 0) {
+          kart.padBoostTimer -= dt;
+          if (kart.padBoostTimer <= 0) {
+            kart.padBoostTimer = 0;
+            kart.padBoostSpeed = 0;
+          }
+        }
+
+        // Check each pad
+        for (let i = 0; i < pads.length; i++) {
+          // Skip if on cooldown for this pad
+          if (kart.boostPadCooldowns[i] > 0) continue;
+
+          const pad = pads[i];
+          const dx = kart.position.x - pad.center.x;
+          const dz = kart.position.z - pad.center.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+
+          if (dist < BOOST_PAD_TRIGGER_DIST) {
+            // Activate boost
+            kart.padBoostSpeed = BOOST_PAD_SPEED;
+            kart.padBoostTimer = BOOST_PAD_DURATION;
+            kart.boostPadCooldowns[i] = BOOST_PAD_COOLDOWN;
+          }
+        }
+      }
+    }
+
+    // ========================================
     // CAMERA
     // ========================================
 
@@ -2809,6 +2972,12 @@
 
       camera.position.copy(camCurrentPos);
       camera.lookAt(camCurrentLookAt);
+
+      // FOV punch during boost (pad boost or drift boost)
+      const isBoosted = kart.padBoostTimer > 0 || kart.driftBoostTimer > 0;
+      const targetFov = isBoosted ? 75 : 60;
+      camera.fov += (targetFov - camera.fov) * Math.min(1, 6 * dt);
+      camera.updateProjectionMatrix();
     }
 
     // ========================================
@@ -3130,8 +3299,10 @@
       const playerKart = karts[localPlayerIndex];
       if (!playerKart) return;
 
-      // Effective max speed includes drift boost
-      const effectiveMax = MAX_SPEED + (playerKart.driftBoostTimer > 0 ? playerKart.driftBoostSpeed : 0);
+      // Effective max speed includes drift boost and pad boost
+      const effectiveMax = MAX_SPEED
+        + (playerKart.driftBoostTimer > 0 ? playerKart.driftBoostSpeed : 0)
+        + (playerKart.padBoostTimer > 0 ? playerKart.padBoostSpeed : 0);
       const pct = Math.min(100, (playerKart.speed / effectiveMax) * 100);
       speedBarFill.style.height = pct + '%';
       speedValue.textContent = Math.round(playerKart.speed);
@@ -3346,6 +3517,7 @@
         }
         resolveKartCollisions();
         resolveBarrierCollisions();
+        checkBoostPads(FIXED_DT);
         accumulator -= FIXED_DT;
       }
 
