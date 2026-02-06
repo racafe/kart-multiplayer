@@ -521,6 +521,88 @@
       min-height: 20px;
       text-align: center;
     }
+    /* ========================================
+       START RACE OVERLAY
+       ======================================== */
+    .start-race-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.95);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 150;
+      padding: 30px;
+    }
+    .start-race-overlay.visible {
+      display: flex;
+    }
+    .start-race-title {
+      color: #f59e0b;
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      text-align: center;
+      text-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+      letter-spacing: 4px;
+      text-transform: uppercase;
+    }
+    .start-race-subtitle {
+      color: #888;
+      font-size: 14px;
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .start-race-btn {
+      background: linear-gradient(145deg, #f59e0b, #d97706);
+      color: #000;
+      border: none;
+      padding: 24px 70px;
+      font-size: 28px;
+      font-weight: bold;
+      font-family: 'Courier New', monospace;
+      border-radius: 40px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 4px;
+      box-shadow:
+        0 0 20px rgba(245, 158, 11, 0.4),
+        0 0 40px rgba(245, 158, 11, 0.2);
+      animation: startBtnGlow 1.5s ease-in-out infinite;
+    }
+    .start-race-btn:active {
+      transform: scale(0.95);
+    }
+    @keyframes startBtnGlow {
+      0%, 100% {
+        box-shadow:
+          0 0 20px rgba(245, 158, 11, 0.4),
+          0 0 40px rgba(245, 158, 11, 0.2);
+      }
+      50% {
+        box-shadow:
+          0 0 30px rgba(245, 158, 11, 0.6),
+          0 0 60px rgba(245, 158, 11, 0.3);
+      }
+    }
+    .start-race-waiting {
+      display: none;
+      color: #f59e0b;
+      font-size: 18px;
+      text-align: center;
+      animation: waitPulse 2s ease-in-out infinite;
+    }
+    .start-race-waiting.visible {
+      display: block;
+    }
+    @keyframes waitPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
   </style>
 </head>
 <body>
@@ -557,6 +639,14 @@
       <div class="room-input-error" id="roomInputError"></div>
       <button class="room-connect-button" id="roomConnectButton">CONNECT</button>
     </div>
+  </div>
+
+  <!-- Start Race overlay (shown after joining room) -->
+  <div class="start-race-overlay" id="startRaceOverlay">
+    <div class="start-race-title">Ready to Race</div>
+    <div class="start-race-subtitle" id="startRaceSubtitle">Waiting for Player 2 or press START</div>
+    <button class="start-race-btn" id="startRaceBtn">START</button>
+    <div class="start-race-waiting" id="startRaceWaiting">Starting race...</div>
   </div>
 
   <!-- Reconnect overlay -->
@@ -631,6 +721,12 @@
     const reconnectButton = document.getElementById('reconnectButton');
     const reconnectAttempts = document.getElementById('reconnectAttempts');
 
+    // Start race overlay
+    const startRaceOverlay = document.getElementById('startRaceOverlay');
+    const startRaceBtn = document.getElementById('startRaceBtn');
+    const startRaceWaiting = document.getElementById('startRaceWaiting');
+    const startRaceSubtitle = document.getElementById('startRaceSubtitle');
+
     // Gyro permission
     const gyroPermissionOverlay = document.getElementById('gyroPermissionOverlay');
     const gyroPermissionButton = document.getElementById('gyroPermissionButton');
@@ -666,6 +762,7 @@
     const MAX_STEER_ANGLE = 45; // Degrees of tilt for full steering
     let currentSteeringAngle = 0; // -1 to 1 normalized
     let isDrifting = false;
+    let raceStarted = false;
 
     // Throttle steering messages to ~30Hz
     const STEER_THROTTLE_MS = 33;
@@ -1135,6 +1232,38 @@
     }
 
     // ========================================
+    // START RACE OVERLAY
+    // ========================================
+
+    function showStartRaceOverlay() {
+      startRaceOverlay.classList.add('visible');
+      startRaceBtn.style.display = '';
+      startRaceWaiting.classList.remove('visible');
+      if (playerSlot === 'player1') {
+        startRaceSubtitle.textContent = 'Waiting for Player 2 or press START';
+      } else {
+        startRaceSubtitle.textContent = 'Press START when ready';
+      }
+    }
+
+    function hideStartRaceOverlay() {
+      raceStarted = true;
+      startRaceOverlay.classList.remove('visible');
+    }
+
+    function sendStartRace() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify({ type: 'start_race' }));
+      // Show waiting state
+      startRaceBtn.style.display = 'none';
+      startRaceWaiting.classList.add('visible');
+      // Hide overlay shortly after (game screen will handle start)
+      setTimeout(() => {
+        hideStartRaceOverlay();
+      }, 500);
+    }
+
+    // ========================================
     // MESSAGE HANDLING
     // ========================================
 
@@ -1150,6 +1279,10 @@
           // Initialize gyroscope after connecting
           if (!gyroEnabled) {
             initGyroscope();
+          }
+          // Show start race overlay
+          if (!raceStarted) {
+            showStartRaceOverlay();
           }
           break;
 
@@ -1177,6 +1310,10 @@
             hideReconnectOverlay();
             showRoomInput('Room not found or expired. Enter a new room code');
           }
+          break;
+
+        case 'race_starting':
+          hideStartRaceOverlay();
           break;
 
         case 'peer_disconnected':
@@ -1209,6 +1346,7 @@
       isConnected = false;
       roomCode = null;
       playerSlot = null;
+      raceStarted = false;
       showRoomInput('Race ended. Enter a new room code to race again');
     }
 
@@ -1233,6 +1371,7 @@
 
     function handleNewGame() {
       isWaitingForNewGame = false;
+      raceStarted = false;
       setStatus('connected', 'Connected');
 
       if (playerSlot === 'player1') {
@@ -1240,6 +1379,9 @@
       } else if (playerSlot === 'player2') {
         playerIndicator.textContent = 'Player 2 - Blue Kart';
       }
+
+      // Show start race overlay again for new race
+      showStartRaceOverlay();
     }
 
     // ========================================
@@ -1277,6 +1419,8 @@
     });
 
     roomConnectButton.addEventListener('click', handleRoomCodeSubmit);
+
+    startRaceBtn.addEventListener('click', sendStartRace);
 
     // ========================================
     // INITIALIZATION

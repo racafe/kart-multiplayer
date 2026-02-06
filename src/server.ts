@@ -288,6 +288,7 @@ wss.on("connection", (ws: WebSocket) => {
       case "item_use":
       case "game_state":
       case "race_start":
+      case "race_starting":
       case "race_countdown":
       case "lap_update":
       case "race_finish":

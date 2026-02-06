@@ -229,53 +229,18 @@
       50% { opacity: 0.7; }
     }
 
-    /* Start Race button */
-    .start-race-button {
-      display: none;
-      background: linear-gradient(145deg, #f59e0b, #d97706);
-      color: #000;
-      border: none;
-      padding: 18px 60px;
-      font-size: 24px;
-      font-weight: bold;
-      font-family: 'Courier New', monospace;
-      border-radius: 12px;
-      cursor: pointer;
-      text-transform: uppercase;
-      letter-spacing: 4px;
-      transition: transform 0.1s, box-shadow 0.1s;
-      box-shadow:
-        0 0 20px rgba(245, 158, 11, 0.4),
-        0 0 40px rgba(245, 158, 11, 0.2);
+    /* Start Race hint */
+    .start-race-hint {
+      font-size: 16px;
+      color: #f59e0b;
+      text-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+      letter-spacing: 2px;
+      animation: hintPulse 2s ease-in-out infinite;
     }
 
-    .start-race-button.visible {
-      display: block;
-      animation: buttonGlow 1.5s ease-in-out infinite;
-    }
-
-    @keyframes buttonGlow {
-      0%, 100% {
-        box-shadow:
-          0 0 20px rgba(245, 158, 11, 0.4),
-          0 0 40px rgba(245, 158, 11, 0.2);
-      }
-      50% {
-        box-shadow:
-          0 0 30px rgba(245, 158, 11, 0.6),
-          0 0 60px rgba(245, 158, 11, 0.3);
-      }
-    }
-
-    .start-race-button:hover {
-      transform: scale(1.05);
-      box-shadow:
-        0 0 30px rgba(245, 158, 11, 0.6),
-        0 0 60px rgba(245, 158, 11, 0.3);
-    }
-
-    .start-race-button:active {
-      transform: scale(0.95);
+    @keyframes hintPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
     }
 
     .instructions {
@@ -824,7 +789,7 @@
 
     <p class="main-status" id="mainStatus">Connecting to server...</p>
 
-    <button class="start-race-button" id="startRaceButton">Start Race</button>
+    <p class="start-race-hint" id="startRaceHint" style="display: none;"></p>
 
     <p class="instructions">
       Open the camera app on your phone and scan the QR code,
@@ -892,8 +857,8 @@
     </div>
   </div>
 
-  <!-- Three.js from CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.min.js"></script>
+  <!-- Three.js from CDN (0.158 is last version with UMD build) -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
 
   <!-- QR Code library from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.2.2/build/qrcode.min.js"></script>
@@ -927,7 +892,7 @@
     const player2Dot = document.getElementById('player2Dot');
     const player2Status = document.getElementById('player2Status');
     const playerCount = document.getElementById('playerCount');
-    const startRaceButton = document.getElementById('startRaceButton');
+    const startRaceHint = document.getElementById('startRaceHint');
 
     // Pause overlay elements
     const pauseOverlay = document.getElementById('pauseOverlay');
@@ -1002,12 +967,25 @@
       const count = getConnectedCount();
       playerCount.textContent = count;
 
-      if (count >= 1) {
-        startRaceButton.classList.add('visible');
+      if (count >= 2) {
+        // Both players connected — auto-start after short delay
+        setMainStatus('Both players connected!', true);
+        startRaceHint.textContent = 'Race starting automatically...';
+        startRaceHint.style.display = 'block';
+        if (!isRaceInProgress) {
+          setTimeout(() => {
+            if (getConnectedCount() >= 2 && !isRaceInProgress) {
+              handleStartRace();
+            }
+          }, 2000);
+        }
+      } else if (count === 1) {
         setMainStatus('Ready to race!', true);
+        startRaceHint.textContent = 'Press START on your controller, or wait for Player 2';
+        startRaceHint.style.display = 'block';
       } else {
-        startRaceButton.classList.remove('visible');
         setMainStatus('Waiting for players...');
+        startRaceHint.style.display = 'none';
       }
 
       // Make the next empty slot pulse
@@ -1150,6 +1128,13 @@
           setMainStatus(getConnectedCount() > 0 ? 'Ready to race!' : 'Waiting for players...');
           break;
 
+        // Controller requests race start
+        case 'start_race':
+          if (!isRaceInProgress && getConnectedCount() >= 1) {
+            handleStartRace();
+          }
+          break;
+
         // Kart game messages from controllers
         case 'steering_input':
         case 'drift':
@@ -1175,10 +1160,10 @@
 
       isRaceInProgress = true;
 
-      // Notify controllers that race is starting
+      // Notify all controllers that race is starting
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
-          type: 'start_race',
+          type: 'race_starting',
           data: {
             players: getConnectedCount(),
             player1: player1Connected,
@@ -1201,11 +1186,10 @@
       if (typeof window.initTrack === 'function') {
         window.initTrack(gameArea);
       }
-      // If track already initialized (re-race), start engine directly
+      // Start engine once track is ready
       if (window.kartGame?.track && typeof window.kartGame.startEngine === 'function') {
         const p1 = player1Connected;
         const p2 = player2Connected;
-        // Small delay to ensure DOM is ready
         setTimeout(() => {
           window.kartGame.startEngine({ player1: p1, player2: p2 });
         }, 150);
@@ -1292,7 +1276,6 @@
     // EVENT LISTENERS
     // ========================================
 
-    startRaceButton.addEventListener('click', handleStartRace);
     pauseEndButton.addEventListener('click', handleEndRaceClick);
 
     // ========================================
@@ -1303,14 +1286,13 @@
 
     // Export for external use and future stories
     window.updatePlayerStatus = updatePlayerStatus;
-    window.kartGame = {
-      handleInput: null, // Will be set by game engine (US-003)
-      returnToLobby: function() {
-        isRaceInProgress = false;
-        gameArea.classList.remove('visible');
-        connectionScreen.style.display = 'flex';
-        updateLobbyState();
-      },
+    window.kartGame = window.kartGame || {};
+    window.kartGame.handleInput = window.kartGame.handleInput || null;
+    window.kartGame.returnToLobby = function() {
+      isRaceInProgress = false;
+      gameArea.classList.remove('visible');
+      connectionScreen.style.display = 'flex';
+      updateLobbyState();
     };
   </script>
 
