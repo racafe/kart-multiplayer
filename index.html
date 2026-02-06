@@ -1455,5 +1455,676 @@
 
   })();
   </script>
+
+  <!-- ========================================
+       KART ENGINE MODULE (US-003)
+       Rendering, physics, camera, input
+       ======================================== -->
+  <script>
+  (function() {
+    'use strict';
+
+    const THREE = window.THREE;
+    if (!THREE) return;
+
+    // ========================================
+    // CONSTANTS
+    // ========================================
+
+    const FIXED_DT = 1 / 60; // Fixed timestep for physics
+    const MAX_SPEED = 40;
+    const ACCELERATION = 18;
+    const OFFTRACK_MAX_SPEED = 15;
+    const OFFTRACK_DECEL = 30;
+    const TURN_SPEED = 2.5;
+    const DRIFT_TURN_MULTIPLIER = 1.6;
+    const DRIFT_FRICTION = 0.92;
+    const NATURAL_DECEL = 5; // Gentle slowdown when not actively controlled
+    const KART_RADIUS = 1.2; // Collision radius
+    const BUMP_FORCE = 12;
+    const BARRIER_BOUNCE = 0.4;
+    const BANK_ANGLE = 0.35; // Max visual banking angle (radians)
+    const BANK_SMOOTHING = 5;
+
+    // Camera
+    const CAM_DISTANCE = 12;
+    const CAM_HEIGHT = 5;
+    const CAM_LOOK_AHEAD = 6;
+    const CAM_SMOOTHING = 4;
+
+    // Colors
+    const PLAYER_COLORS = {
+      player1: 0xef4444, // red
+      player2: 0x3b82f6, // blue
+    };
+
+    // ========================================
+    // STATE
+    // ========================================
+
+    let karts = []; // Array of kart objects
+    let localPlayerIndex = 0; // Which kart the camera follows
+    let engineRunning = false;
+    let accumulator = 0;
+    let lastTime = 0;
+    let animFrameId = null;
+
+    // Track ref (set when engine starts)
+    let trackData = null;
+
+    // ========================================
+    // KART MODEL BUILDER
+    // ========================================
+
+    function buildKartModel(color) {
+      const group = new THREE.Group();
+
+      // --- Body (main chassis) ---
+      const bodyGeom = new THREE.BoxGeometry(1.6, 0.5, 2.4);
+      const bodyMat = new THREE.MeshStandardMaterial({
+        color: color,
+        roughness: 0.4,
+        metalness: 0.3,
+        flatShading: true,
+      });
+      const body = new THREE.Mesh(bodyGeom, bodyMat);
+      body.position.y = 0.45;
+      body.castShadow = true;
+      group.add(body);
+
+      // --- Cockpit (raised back section) ---
+      const cockpitGeom = new THREE.BoxGeometry(1.0, 0.45, 1.0);
+      const cockpitMat = new THREE.MeshStandardMaterial({
+        color: color,
+        roughness: 0.5,
+        metalness: 0.2,
+        flatShading: true,
+      });
+      const cockpit = new THREE.Mesh(cockpitGeom, cockpitMat);
+      cockpit.position.set(0, 0.9, -0.3);
+      cockpit.castShadow = true;
+      group.add(cockpit);
+
+      // --- Spoiler ---
+      const spoilerGeom = new THREE.BoxGeometry(1.8, 0.08, 0.3);
+      const spoilerMat = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.6,
+        flatShading: true,
+      });
+      const spoiler = new THREE.Mesh(spoilerGeom, spoilerMat);
+      spoiler.position.set(0, 1.15, -1.1);
+      spoiler.castShadow = true;
+      group.add(spoiler);
+
+      // Spoiler supports
+      const supportGeom = new THREE.BoxGeometry(0.08, 0.3, 0.08);
+      const supportMat = new THREE.MeshStandardMaterial({ color: 0x555555, flatShading: true });
+      for (const sx of [-0.7, 0.7]) {
+        const support = new THREE.Mesh(supportGeom, supportMat);
+        support.position.set(sx, 1.0, -1.1);
+        group.add(support);
+      }
+
+      // --- Nose (front wedge) ---
+      const noseGeom = new THREE.BoxGeometry(1.2, 0.3, 0.6);
+      const noseMat = new THREE.MeshStandardMaterial({
+        color: color,
+        roughness: 0.4,
+        metalness: 0.3,
+        flatShading: true,
+      });
+      const nose = new THREE.Mesh(noseGeom, noseMat);
+      nose.position.set(0, 0.35, 1.3);
+      nose.castShadow = true;
+      group.add(nose);
+
+      // --- Wheels (4 cylinders) ---
+      const wheelGeom = new THREE.CylinderGeometry(0.3, 0.3, 0.25, 8);
+      const wheelMat = new THREE.MeshStandardMaterial({
+        color: 0x222222,
+        roughness: 0.9,
+        flatShading: true,
+      });
+
+      const wheelPositions = [
+        { x: -0.85, y: 0.3, z: 0.8 },  // front-left
+        { x: 0.85, y: 0.3, z: 0.8 },   // front-right
+        { x: -0.85, y: 0.3, z: -0.8 },  // rear-left
+        { x: 0.85, y: 0.3, z: -0.8 },   // rear-right
+      ];
+
+      const wheels = [];
+      for (const wp of wheelPositions) {
+        const wheel = new THREE.Mesh(wheelGeom, wheelMat);
+        wheel.position.set(wp.x, wp.y, wp.z);
+        wheel.rotation.z = Math.PI / 2;
+        wheel.castShadow = true;
+        group.add(wheel);
+        wheels.push(wheel);
+      }
+
+      // --- Helmet (driver head) ---
+      const helmetGeom = new THREE.SphereGeometry(0.25, 6, 4);
+      const helmetMat = new THREE.MeshStandardMaterial({
+        color: color,
+        roughness: 0.3,
+        metalness: 0.4,
+        flatShading: true,
+      });
+      const helmet = new THREE.Mesh(helmetGeom, helmetMat);
+      helmet.position.set(0, 1.25, -0.3);
+      helmet.castShadow = true;
+      group.add(helmet);
+
+      // --- Visor ---
+      const visorGeom = new THREE.BoxGeometry(0.35, 0.1, 0.15);
+      const visorMat = new THREE.MeshStandardMaterial({
+        color: 0x111111,
+        roughness: 0.2,
+        metalness: 0.8,
+        flatShading: true,
+      });
+      const visor = new THREE.Mesh(visorGeom, visorMat);
+      visor.position.set(0, 1.22, -0.07);
+      group.add(visor);
+
+      // --- Exhaust pipes ---
+      const exhaustGeom = new THREE.CylinderGeometry(0.06, 0.08, 0.35, 5);
+      const exhaustMat = new THREE.MeshStandardMaterial({
+        color: 0x888888,
+        roughness: 0.3,
+        metalness: 0.7,
+        flatShading: true,
+      });
+      for (const ex of [-0.4, 0.4]) {
+        const exhaust = new THREE.Mesh(exhaustGeom, exhaustMat);
+        exhaust.position.set(ex, 0.55, -1.35);
+        exhaust.rotation.x = Math.PI / 2;
+        group.add(exhaust);
+      }
+
+      group.userData.wheels = wheels;
+      return group;
+    }
+
+    // ========================================
+    // KART OBJECT
+    // ========================================
+
+    function createKart(playerSlot, startT, startLateralOffset) {
+      const color = PLAYER_COLORS[playerSlot] || 0xf59e0b;
+      const model = buildKartModel(color);
+
+      const spline = trackData.spline;
+      const pos = spline.getPointAt(startT);
+      const tang = spline.getTangentAt(startT);
+      const up = new THREE.Vector3(0, 1, 0);
+      const side = new THREE.Vector3().crossVectors(tang, up).normalize();
+
+      // Offset laterally for side-by-side starts
+      pos.addScaledVector(side, startLateralOffset);
+
+      model.position.copy(pos);
+      model.position.y += 0.05; // Lift above road slightly
+
+      // Orient kart facing along track tangent
+      const heading = Math.atan2(tang.x, tang.z);
+
+      trackData.scene.add(model);
+
+      return {
+        model: model,
+        slot: playerSlot,
+        position: model.position.clone(),
+        heading: heading,
+        speed: 0,
+        lateralVelocity: new THREE.Vector3(0, 0, 0),
+        steeringInput: 0, // -1 to 1
+        isDrifting: false,
+        isOnTrack: true,
+        currentBank: 0,
+      };
+    }
+
+    // ========================================
+    // PHYSICS UPDATE
+    // ========================================
+
+    function updateKartPhysics(kart, dt) {
+      // Check if on track
+      kart.isOnTrack = trackData.isOnTrack(kart.position);
+
+      const maxSpd = kart.isOnTrack ? MAX_SPEED : OFFTRACK_MAX_SPEED;
+
+      // Auto-accelerate
+      if (kart.speed < maxSpd) {
+        kart.speed += ACCELERATION * dt;
+        if (kart.speed > maxSpd) kart.speed = maxSpd;
+      }
+
+      // Off-track deceleration
+      if (!kart.isOnTrack && kart.speed > OFFTRACK_MAX_SPEED) {
+        kart.speed -= OFFTRACK_DECEL * dt;
+        if (kart.speed < OFFTRACK_MAX_SPEED) kart.speed = OFFTRACK_MAX_SPEED;
+      }
+
+      // Natural deceleration (gentle)
+      if (kart.speed > 0) {
+        kart.speed -= NATURAL_DECEL * dt;
+        if (kart.speed < 0) kart.speed = 0;
+      }
+
+      // Steering
+      let turnRate = TURN_SPEED * kart.steeringInput;
+      if (kart.isDrifting) {
+        turnRate *= DRIFT_TURN_MULTIPLIER;
+      }
+
+      // Scale turning with speed (can't turn when stationary)
+      const speedFactor = Math.min(1, kart.speed / 10);
+      kart.heading += turnRate * speedFactor * dt;
+
+      // Drift lateral slide
+      if (kart.isDrifting && kart.speed > 5) {
+        const sideDir = new THREE.Vector3(
+          -Math.cos(kart.heading),
+          0,
+          Math.sin(kart.heading)
+        );
+        const driftAmount = kart.steeringInput * kart.speed * 0.03;
+        kart.lateralVelocity.addScaledVector(sideDir, driftAmount);
+      }
+
+      // Decay lateral velocity
+      kart.lateralVelocity.multiplyScalar(DRIFT_FRICTION);
+
+      // Compute forward direction
+      const forward = new THREE.Vector3(
+        Math.sin(kart.heading),
+        0,
+        Math.cos(kart.heading)
+      );
+
+      // Move kart
+      kart.position.addScaledVector(forward, kart.speed * dt);
+      kart.position.add(kart.lateralVelocity.clone().multiplyScalar(dt));
+
+      // Ground following: project onto track height using closest spline point
+      const groundY = getTrackHeight(kart.position);
+      kart.position.y = groundY + 0.05;
+
+      // Update model transform
+      kart.model.position.copy(kart.position);
+      kart.model.rotation.y = kart.heading;
+
+      // Visual banking when turning
+      const targetBank = -kart.steeringInput * speedFactor * BANK_ANGLE;
+      kart.currentBank += (targetBank - kart.currentBank) * Math.min(1, BANK_SMOOTHING * dt);
+      kart.model.rotation.z = kart.currentBank;
+
+      // Spin wheels
+      const wheelSpin = kart.speed * dt * 3;
+      const wheels = kart.model.userData.wheels;
+      if (wheels) {
+        for (const wheel of wheels) {
+          wheel.rotation.x += wheelSpin;
+        }
+      }
+    }
+
+    function getTrackHeight(worldPos) {
+      // Find closest point on spline and use its Y
+      const spline = trackData.spline;
+      let minDist = Infinity;
+      let closestT = 0;
+      const steps = 100;
+
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const sp = spline.getPointAt(t);
+        const dx = worldPos.x - sp.x;
+        const dz = worldPos.z - sp.z;
+        const dist = dx * dx + dz * dz;
+        if (dist < minDist) {
+          minDist = dist;
+          closestT = t;
+        }
+      }
+
+      // Refine
+      const step2 = 1 / steps;
+      const tMin = Math.max(0, closestT - step2);
+      const tMax = Math.min(1, closestT + step2);
+      for (let i = 0; i <= 10; i++) {
+        const t = tMin + (tMax - tMin) * (i / 10);
+        const sp = spline.getPointAt(t);
+        const dx = worldPos.x - sp.x;
+        const dz = worldPos.z - sp.z;
+        const dist = dx * dx + dz * dz;
+        if (dist < minDist) {
+          minDist = dist;
+          closestT = t;
+        }
+      }
+
+      return spline.getPointAt(closestT).y;
+    }
+
+    // ========================================
+    // COLLISION DETECTION
+    // ========================================
+
+    function resolveKartCollisions() {
+      for (let i = 0; i < karts.length; i++) {
+        for (let j = i + 1; j < karts.length; j++) {
+          const a = karts[i];
+          const b = karts[j];
+
+          const dx = b.position.x - a.position.x;
+          const dz = b.position.z - a.position.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          const minDist = KART_RADIUS * 2;
+
+          if (dist < minDist && dist > 0.001) {
+            // Overlap — push apart
+            const overlap = minDist - dist;
+            const nx = dx / dist;
+            const nz = dz / dist;
+
+            // Push each kart half the overlap
+            a.position.x -= nx * overlap * 0.5;
+            a.position.z -= nz * overlap * 0.5;
+            b.position.x += nx * overlap * 0.5;
+            b.position.z += nz * overlap * 0.5;
+
+            // Bump: exchange some speed along collision normal
+            const relSpeed = a.speed - b.speed;
+            a.speed -= relSpeed * 0.3;
+            b.speed += relSpeed * 0.3;
+
+            // Add lateral bump force
+            const bumpVec = new THREE.Vector3(nx, 0, nz);
+            a.lateralVelocity.addScaledVector(bumpVec, -BUMP_FORCE * 0.5);
+            b.lateralVelocity.addScaledVector(bumpVec, BUMP_FORCE * 0.5);
+          }
+        }
+      }
+    }
+
+    function resolveBarrierCollisions() {
+      const spline = trackData.spline;
+      const halfW = trackData.halfWidth;
+
+      for (const kart of karts) {
+        // Find closest point on spline
+        let minDist = Infinity;
+        let closestT = 0;
+        const steps = 100;
+
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const sp = spline.getPointAt(t);
+          const dx = kart.position.x - sp.x;
+          const dz = kart.position.z - sp.z;
+          const dist = dx * dx + dz * dz;
+          if (dist < minDist) {
+            minDist = dist;
+            closestT = t;
+          }
+        }
+
+        // Refine
+        const step2 = 1 / steps;
+        const tMin = Math.max(0, closestT - step2);
+        const tMax = Math.min(1, closestT + step2);
+        for (let i = 0; i <= 10; i++) {
+          const t = tMin + (tMax - tMin) * (i / 10);
+          const sp = spline.getPointAt(t);
+          const dx = kart.position.x - sp.x;
+          const dz = kart.position.z - sp.z;
+          const dist = dx * dx + dz * dz;
+          if (dist < minDist) {
+            minDist = dist;
+            closestT = t;
+          }
+        }
+
+        const closestPoint = spline.getPointAt(closestT);
+        const tang = spline.getTangentAt(closestT);
+        const up = new THREE.Vector3(0, 1, 0);
+        const side = new THREE.Vector3().crossVectors(tang, up).normalize();
+
+        // Project kart position onto the side vector to get lateral offset
+        const toKart = new THREE.Vector3().subVectors(kart.position, closestPoint);
+        const lateralOffset = toKart.dot(side);
+        const barrierLimit = halfW + 0.5; // barrier thickness offset
+
+        if (Math.abs(lateralOffset) > barrierLimit) {
+          // Push back inside
+          const sign = lateralOffset > 0 ? 1 : -1;
+          const pushback = Math.abs(lateralOffset) - barrierLimit;
+
+          kart.position.addScaledVector(side, -sign * pushback);
+
+          // Bounce: reflect lateral velocity and reduce speed
+          const lateralDot = kart.lateralVelocity.dot(side);
+          kart.lateralVelocity.addScaledVector(side, -lateralDot * (1 + BARRIER_BOUNCE));
+
+          // Reduce forward speed on wall hit
+          kart.speed *= (1 - BARRIER_BOUNCE);
+
+          // Add some bounce force away from barrier
+          kart.lateralVelocity.addScaledVector(side, -sign * 3);
+        }
+      }
+    }
+
+    // ========================================
+    // CAMERA
+    // ========================================
+
+    const camCurrentPos = new THREE.Vector3();
+    const camCurrentLookAt = new THREE.Vector3();
+    let camInitialized = false;
+
+    function updateCamera(dt) {
+      if (karts.length === 0) return;
+
+      const kart = karts[localPlayerIndex];
+      if (!kart) return;
+
+      const camera = trackData.camera;
+
+      const forward = new THREE.Vector3(
+        Math.sin(kart.heading),
+        0,
+        Math.cos(kart.heading)
+      );
+
+      // Desired camera position: behind and above the kart
+      const desiredPos = kart.position.clone()
+        .addScaledVector(forward, -CAM_DISTANCE)
+        .add(new THREE.Vector3(0, CAM_HEIGHT, 0));
+
+      // Desired look-at: ahead of kart
+      const desiredLookAt = kart.position.clone()
+        .addScaledVector(forward, CAM_LOOK_AHEAD)
+        .add(new THREE.Vector3(0, 1.5, 0));
+
+      if (!camInitialized) {
+        camCurrentPos.copy(desiredPos);
+        camCurrentLookAt.copy(desiredLookAt);
+        camInitialized = true;
+      }
+
+      // Smooth camera follow
+      const smoothFactor = Math.min(1, CAM_SMOOTHING * dt);
+      camCurrentPos.lerp(desiredPos, smoothFactor);
+      camCurrentLookAt.lerp(desiredLookAt, smoothFactor);
+
+      camera.position.copy(camCurrentPos);
+      camera.lookAt(camCurrentLookAt);
+    }
+
+    // ========================================
+    // INPUT HANDLING
+    // ========================================
+
+    function handleInput(message) {
+      const playerSlot = message.player; // Injected by server
+      const kart = karts.find(k => k.slot === playerSlot);
+      if (!kart) return;
+
+      switch (message.type) {
+        case 'steering_input':
+          kart.steeringInput = message.data?.angle || 0;
+          break;
+        case 'drift':
+          kart.isDrifting = !!message.data?.active;
+          break;
+        case 'item_use':
+          // Future: item system (US-005+)
+          break;
+      }
+    }
+
+    // Also support keyboard for testing (host screen)
+    const keysDown = {};
+    window.addEventListener('keydown', (e) => {
+      keysDown[e.key] = true;
+    });
+    window.addEventListener('keyup', (e) => {
+      keysDown[e.key] = false;
+    });
+
+    function applyKeyboardInput() {
+      if (karts.length === 0) return;
+      const kart = karts[0]; // Keyboard controls first kart
+
+      if (keysDown['ArrowLeft'] || keysDown['a']) {
+        kart.steeringInput = -1;
+      } else if (keysDown['ArrowRight'] || keysDown['d']) {
+        kart.steeringInput = 1;
+      } else {
+        kart.steeringInput = 0;
+      }
+
+      kart.isDrifting = !!keysDown['Shift'];
+    }
+
+    // ========================================
+    // GAME LOOP
+    // ========================================
+
+    function gameLoop(timestamp) {
+      if (!engineRunning) return;
+      animFrameId = requestAnimationFrame(gameLoop);
+
+      if (lastTime === 0) {
+        lastTime = timestamp;
+        return;
+      }
+
+      const frameDt = Math.min((timestamp - lastTime) / 1000, 0.1); // Cap at 100ms
+      lastTime = timestamp;
+      accumulator += frameDt;
+
+      // Apply keyboard input each frame
+      applyKeyboardInput();
+
+      // Fixed timestep physics
+      while (accumulator >= FIXED_DT) {
+        for (const kart of karts) {
+          updateKartPhysics(kart, FIXED_DT);
+        }
+        resolveKartCollisions();
+        resolveBarrierCollisions();
+        accumulator -= FIXED_DT;
+      }
+
+      // Update camera (smooth, not fixed timestep)
+      updateCamera(frameDt);
+
+      // Render is handled by the track module's animate loop
+    }
+
+    // ========================================
+    // ENGINE START
+    // ========================================
+
+    function startEngine(connectedPlayers) {
+      // Wait for track data to be available
+      trackData = window.kartGame?.track;
+      if (!trackData) {
+        console.error('Track data not available');
+        return;
+      }
+
+      // Determine which players to spawn karts for
+      const players = [];
+      if (connectedPlayers.player1) players.push('player1');
+      if (connectedPlayers.player2) players.push('player2');
+
+      // If only 1 player, still spawn at least one kart
+      if (players.length === 0) players.push('player1');
+
+      // Place karts at the start line, side by side
+      const startT = 0.005; // Slightly past the start/finish line
+      const offsets = players.length === 1 ? [0] : [-2.5, 2.5];
+
+      karts = [];
+      for (let i = 0; i < players.length; i++) {
+        const kart = createKart(players[i], startT, offsets[i]);
+        karts.push(kart);
+      }
+
+      // Camera follows player 1 by default
+      localPlayerIndex = 0;
+      camInitialized = false;
+
+      // Wire up input handler
+      window.kartGame.handleInput = handleInput;
+
+      // Start game loop
+      engineRunning = true;
+      lastTime = 0;
+      accumulator = 0;
+      animFrameId = requestAnimationFrame(gameLoop);
+
+      console.log(`Kart engine started with ${players.length} player(s)`);
+    }
+
+    // ========================================
+    // HOOK INTO RACE START
+    // ========================================
+
+    // Listen for initTrack to complete via MutationObserver
+    // on the game area to detect when the canvas is added
+    const gameArea = document.getElementById('gameArea');
+
+    const observer = new MutationObserver(() => {
+      // Check if track is initialized and engine not yet running
+      if (window.kartGame?.track && !engineRunning) {
+        // Small delay to ensure track is fully set up
+        setTimeout(() => {
+          if (window.kartGame?.track && !engineRunning) {
+            // Determine connected players from lobby state
+            const p1 = document.getElementById('player1Dot').classList.contains('connected');
+            const p2 = document.getElementById('player2Dot').classList.contains('connected');
+            startEngine({ player1: p1, player2: p2 });
+          }
+        }, 100);
+      }
+    });
+
+    observer.observe(gameArea, { childList: true, subtree: true });
+
+    // Also expose for manual start
+    window.kartGame = window.kartGame || {};
+    window.kartGame.startEngine = startEngine;
+
+  })();
+  </script>
 </body>
 </html>
