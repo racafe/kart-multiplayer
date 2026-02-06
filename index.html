@@ -1479,12 +1479,23 @@
     const TURN_SPEED = 2.5;
     const DRIFT_TURN_MULTIPLIER = 1.6;
     const DRIFT_FRICTION = 0.92;
+    const DRIFT_LATERAL_FACTOR = 0.05; // Wider sliding during drift (was 0.03)
     const NATURAL_DECEL = 5; // Gentle slowdown when not actively controlled
     const KART_RADIUS = 1.2; // Collision radius
     const BUMP_FORCE = 12;
     const BARRIER_BOUNCE = 0.4;
     const BANK_ANGLE = 0.35; // Max visual banking angle (radians)
     const BANK_SMOOTHING = 5;
+
+    // Drift boost tiers (duration thresholds in seconds)
+    const DRIFT_TIER1_TIME = 0.5;  // Short drift — small boost
+    const DRIFT_TIER2_TIME = 1.5;  // Medium drift — medium boost
+    const DRIFT_TIER3_TIME = 3.0;  // Long drift — large boost
+    const DRIFT_BOOST_SPEEDS = [5, 10, 18]; // Speed boost per tier
+    const DRIFT_BOOST_DURATION = 0.5; // How long the boost lasts (seconds)
+
+    // Drift spark colors per tier: orange, blue, purple
+    const DRIFT_SPARK_COLORS = [0xff8800, 0x44aaff, 0xcc44ff];
 
     // Camera
     const CAM_DISTANCE = 12;
@@ -1649,6 +1660,110 @@
     }
 
     // ========================================
+    // DRIFT SPARK PARTICLE SYSTEM
+    // ========================================
+
+    const MAX_SPARKS = 60;
+    const SPARK_LIFETIME = 0.4; // seconds
+
+    function createSparkSystem() {
+      const geometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(MAX_SPARKS * 3);
+      const colors = new Float32Array(MAX_SPARKS * 3);
+      const sizes = new Float32Array(MAX_SPARKS);
+
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+
+      const points = new THREE.Points(geometry, material);
+      points.frustumCulled = false;
+
+      return {
+        mesh: points,
+        particles: [], // {x,y,z, vx,vy,vz, life, r,g,b}
+      };
+    }
+
+    function emitSparks(sparkSystem, worldPos, heading, steerSign, tier) {
+      const color = new THREE.Color(DRIFT_SPARK_COLORS[tier] || DRIFT_SPARK_COLORS[0]);
+      // Emit from rear wheels
+      for (const side of [-0.85, 0.85]) {
+        const sideVec = new THREE.Vector3(-Math.cos(heading), 0, Math.sin(heading));
+        const backVec = new THREE.Vector3(-Math.sin(heading), 0, -Math.cos(heading));
+        const spawnPos = worldPos.clone()
+          .addScaledVector(sideVec, side)
+          .addScaledVector(backVec, 0.8);
+        spawnPos.y += 0.15;
+
+        // Sparks fly outward and backward
+        const spread = 0.5 + Math.random() * 0.5;
+        const vx = (sideVec.x * steerSign * 2 + backVec.x * 3 + (Math.random() - 0.5) * 2) * spread;
+        const vy = Math.random() * 2;
+        const vz = (sideVec.z * steerSign * 2 + backVec.z * 3 + (Math.random() - 0.5) * 2) * spread;
+
+        sparkSystem.particles.push({
+          x: spawnPos.x, y: spawnPos.y, z: spawnPos.z,
+          vx, vy, vz,
+          life: SPARK_LIFETIME,
+          r: color.r, g: color.g, b: color.b,
+        });
+      }
+
+      // Trim to max
+      while (sparkSystem.particles.length > MAX_SPARKS) {
+        sparkSystem.particles.shift();
+      }
+    }
+
+    function updateSparkSystem(sparkSystem, dt) {
+      const particles = sparkSystem.particles;
+
+      // Update particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life -= dt;
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.z += p.vz * dt;
+        p.vy -= 5 * dt; // gravity
+      }
+
+      // Write to geometry
+      const geo = sparkSystem.mesh.geometry;
+      const posAttr = geo.getAttribute('position');
+      const colorAttr = geo.getAttribute('color');
+
+      for (let i = 0; i < MAX_SPARKS; i++) {
+        if (i < particles.length) {
+          const p = particles[i];
+          const fade = p.life / SPARK_LIFETIME;
+          posAttr.setXYZ(i, p.x, p.y, p.z);
+          colorAttr.setXYZ(i, p.r * fade, p.g * fade, p.b * fade);
+        } else {
+          posAttr.setXYZ(i, 0, -100, 0); // hide unused
+          colorAttr.setXYZ(i, 0, 0, 0);
+        }
+      }
+
+      posAttr.needsUpdate = true;
+      colorAttr.needsUpdate = true;
+    }
+
+    // ========================================
     // KART OBJECT
     // ========================================
 
@@ -1673,6 +1788,10 @@
 
       trackData.scene.add(model);
 
+      // Create spark system for this kart
+      const sparks = createSparkSystem();
+      trackData.scene.add(sparks.mesh);
+
       return {
         model: model,
         slot: playerSlot,
@@ -1684,6 +1803,13 @@
         isDrifting: false,
         isOnTrack: true,
         currentBank: 0,
+        // Drift state
+        driftTime: 0,        // How long current drift has lasted
+        driftTier: 0,        // Current boost tier (0=none, 1/2/3)
+        driftBoostTimer: 0,  // Remaining boost time after release
+        driftBoostSpeed: 0,  // Current boost speed addition
+        sparkSystem: sparks,
+        sparkEmitTimer: 0,   // Throttle spark emission
       };
     }
 
@@ -1691,16 +1817,35 @@
     // PHYSICS UPDATE
     // ========================================
 
+    function getDriftTier(driftTime) {
+      if (driftTime >= DRIFT_TIER3_TIME) return 2; // tier 3 (index 2)
+      if (driftTime >= DRIFT_TIER2_TIME) return 1; // tier 2
+      if (driftTime >= DRIFT_TIER1_TIME) return 0; // tier 1
+      return -1; // not enough time
+    }
+
     function updateKartPhysics(kart, dt) {
       // Check if on track
       kart.isOnTrack = trackData.isOnTrack(kart.position);
 
       const maxSpd = kart.isOnTrack ? MAX_SPEED : OFFTRACK_MAX_SPEED;
 
+      // Apply drift boost (added to max speed temporarily)
+      let effectiveMaxSpeed = maxSpd;
+      if (kart.driftBoostTimer > 0) {
+        kart.driftBoostTimer -= dt;
+        effectiveMaxSpeed = maxSpd + kart.driftBoostSpeed;
+        if (kart.driftBoostTimer <= 0) {
+          kart.driftBoostTimer = 0;
+          kart.driftBoostSpeed = 0;
+        }
+      }
+
       // Auto-accelerate
-      if (kart.speed < maxSpd) {
-        kart.speed += ACCELERATION * dt;
-        if (kart.speed > maxSpd) kart.speed = maxSpd;
+      if (kart.speed < effectiveMaxSpeed) {
+        const accel = kart.driftBoostTimer > 0 ? ACCELERATION * 2.5 : ACCELERATION;
+        kart.speed += accel * dt;
+        if (kart.speed > effectiveMaxSpeed) kart.speed = effectiveMaxSpeed;
       }
 
       // Off-track deceleration
@@ -1709,8 +1854,8 @@
         if (kart.speed < OFFTRACK_MAX_SPEED) kart.speed = OFFTRACK_MAX_SPEED;
       }
 
-      // Natural deceleration (gentle)
-      if (kart.speed > 0) {
+      // Natural deceleration (gentle) — reduced during boost
+      if (kart.speed > 0 && kart.driftBoostTimer <= 0) {
         kart.speed -= NATURAL_DECEL * dt;
         if (kart.speed < 0) kart.speed = 0;
       }
@@ -1725,8 +1870,30 @@
       const speedFactor = Math.min(1, kart.speed / 10);
       kart.heading += turnRate * speedFactor * dt;
 
-      // Drift lateral slide
-      if (kart.isDrifting && kart.speed > 5) {
+      // Drift tracking and lateral slide
+      if (kart.isDrifting && kart.speed > 5 && Math.abs(kart.steeringInput) > 0.1) {
+        // Track drift duration
+        kart.driftTime += dt;
+        kart.driftTier = getDriftTier(kart.driftTime);
+
+        // Wider lateral slide during drift
+        const sideDir = new THREE.Vector3(
+          -Math.cos(kart.heading),
+          0,
+          Math.sin(kart.heading)
+        );
+        const driftAmount = kart.steeringInput * kart.speed * DRIFT_LATERAL_FACTOR;
+        kart.lateralVelocity.addScaledVector(sideDir, driftAmount);
+
+        // Emit sparks when drifting (throttled)
+        kart.sparkEmitTimer -= dt;
+        if (kart.sparkEmitTimer <= 0 && kart.driftTier >= 0) {
+          const steerSign = kart.steeringInput > 0 ? 1 : -1;
+          emitSparks(kart.sparkSystem, kart.position, kart.heading, steerSign, kart.driftTier);
+          kart.sparkEmitTimer = 0.05; // emit every 50ms
+        }
+      } else if (kart.isDrifting && kart.speed > 5) {
+        // Drifting but not turning enough — still allow basic lateral slide
         const sideDir = new THREE.Vector3(
           -Math.cos(kart.heading),
           0,
@@ -1734,6 +1901,15 @@
         );
         const driftAmount = kart.steeringInput * kart.speed * 0.03;
         kart.lateralVelocity.addScaledVector(sideDir, driftAmount);
+      } else if (!kart.isDrifting && kart.driftTime > 0) {
+        // Drift released — apply boost if earned
+        const tier = getDriftTier(kart.driftTime);
+        if (tier >= 0) {
+          kart.driftBoostSpeed = DRIFT_BOOST_SPEEDS[tier];
+          kart.driftBoostTimer = DRIFT_BOOST_DURATION;
+        }
+        kart.driftTime = 0;
+        kart.driftTier = -1;
       }
 
       // Decay lateral velocity
@@ -1758,8 +1934,9 @@
       kart.model.position.copy(kart.position);
       kart.model.rotation.y = kart.heading;
 
-      // Visual banking when turning
-      const targetBank = -kart.steeringInput * speedFactor * BANK_ANGLE;
+      // Visual banking when turning — drift amplifies bank
+      const driftBankBonus = kart.isDrifting ? 1.4 : 1.0;
+      const targetBank = -kart.steeringInput * speedFactor * BANK_ANGLE * driftBankBonus;
       kart.currentBank += (targetBank - kart.currentBank) * Math.min(1, BANK_SMOOTHING * dt);
       kart.model.rotation.z = kart.currentBank;
 
@@ -1771,6 +1948,9 @@
           wheel.rotation.x += wheelSpin;
         }
       }
+
+      // Update spark particles
+      updateSparkSystem(kart.sparkSystem, dt);
     }
 
     function getTrackHeight(worldPos) {
@@ -1980,11 +2160,17 @@
         case 'steering_input':
           kart.steeringInput = message.data?.angle || 0;
           break;
-        case 'drift':
+        case 'drift': {
+          const wasActive = kart.isDrifting;
           kart.isDrifting = !!message.data?.active;
+          // Reset drift timer on fresh press
+          if (kart.isDrifting && !wasActive) {
+            kart.driftTime = 0;
+            kart.driftTier = -1;
+          }
           break;
+        }
         case 'item_use':
-          // Future: item system (US-005+)
           break;
       }
     }
@@ -2010,7 +2196,12 @@
         kart.steeringInput = 0;
       }
 
-      kart.isDrifting = !!keysDown['Shift'];
+      const shiftDown = !!keysDown['Shift'];
+      if (shiftDown && !kart.isDrifting) {
+        kart.driftTime = 0;
+        kart.driftTier = -1;
+      }
+      kart.isDrifting = shiftDown;
     }
 
     // ========================================
